@@ -4,7 +4,7 @@
   "description": "Node.js core modules (fs, net, tls, dns, http, https, buffer, os, path, process) for React Native, powered by Nitro Modules",
   "license": "MIT",
   "author": "George Manole",
-  "homepage": "https://gmanole.dev",
+  "homepage": "https://github.com/gmanole01/react-native-nitro-node",
   "exports": {
     ".": {
       "source": "./src/index.ts",
