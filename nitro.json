@@ -1,0 +1,66 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "node"
+  ],
+  "ios": {
+    "iosModuleName": "NitroNode"
+  },
+  "android": {
+    "androidNamespace": [
+      "node"
+    ],
+    "androidCxxLibName": "NitroNode"
+  },
+  "autolinking": {
+    "NitroNodeUv": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridUv"
+      }
+    },
+    "NitroNodeNet": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridNet"
+      }
+    },
+    "NitroNodeDns": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridDns"
+      }
+    },
+    "NitroNodeDnsInit": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridDnsInit"
+      }
+    },
+    "NitroNodeFs": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridFs"
+      }
+    },
+    "NitroNodeFsConstants": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridFsConstants"
+      }
+    },
+    "NitroNodeOs": {
+      "ios": {
+        "language": "c++",
+        "implementationClassName": "HybridOs"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridOs"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules"
+  ]
+}

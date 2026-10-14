@@ -1,0 +1,178 @@
+name: C/C++ CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # run on Sun 6 AM UTC to keep caches fresh
+    - cron: '0 6 * * 0'
+
+jobs:
+  build:
+    name: ${{ matrix.target }}-${{ matrix.tls }}${{ matrix.http == 'OFF' && '-nohttp' || '' }}
+    runs-on: ${{ matrix.image }}-latest
+    env:
+      CI_CACHE: '${{ github.workspace }}/.ci.cache'
+      VCPKG_FORCE_SYSTEM_BINARIES: 1
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/.ci.cache,readwrite'
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.target }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu
+            tls: openssl
+            target: x64-linux
+            http: ON
+          - image: ubuntu
+            tls: openssl
+            target: x64-linux
+            http: OFF
+          - image: ubuntu
+            tls: mbedtls
+            target: x64-linux
+            http: ON
+          - image: macOS
+            tls: openssl
+            target: arm64-osx
+            http: ON
+          - image: macOS
+            tls: mbedtls
+            target: arm64-osx
+            http: ON
+          - image: windows
+            tls: openssl
+            target: x64-windows-static-md
+            http: ON
+          - image: windows
+            tls: mbedtls
+            target: x64-windows-static-md
+            http: ON
+          - image: windows
+            tls: win32crypto
+            target: x64-windows-static-md
+            http: ON
+          - image: windows
+            tls: win32crypto
+            target: x86-windows-static-md
+            http: ON
+          - image: windows
+            tls: openssl
+            target: x64-mingw-static
+            http: ON
+          - image: windows
+            tls: win32crypto
+            target: x64-mingw-static
+            http: ON
+
+    steps:
+    - name: Install tools
+      if: matrix.image == 'ubuntu'
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: valgrind softhsm2 libc6-dbg
+
+    - name: Install tools
+      if: matrix.image == 'macOS'
+      run: |
+        brew install pkg-config softhsm
+
+    - name: Add msbuild to PATH
+      if: matrix.image == 'windows'
+      uses: microsoft/setup-msbuild@v2
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: '0'
+
+    - uses: lukka/get-cmake@latest
+      with:
+        cmakeVersion: "~4.3.2"
+
+    - name: create cache dir
+      shell: bash
+      run: |
+        mkdir -p ${CI_CACHE}
+
+    - name: Cache ${{ matrix.target }} deps
+      id: cache
+      uses: actions/cache@v4
+      with:
+        save-always: true
+        path: ${{ env.CI_CACHE }}
+        key: dep-${{ matrix.target }}-${{ matrix.tls }}-${{ hashFiles('./vcpkg.json') }}
+        restore-keys: |
+          dep-${{ matrix.target }}-${{ matrix.tls }}-
+          dep-${{ matrix.target }}-
+
+    - uses: lukka/run-vcpkg@v11
+      with:
+        doNotCache: false
+        runVcpkgInstall: false
+
+    - uses: lukka/run-cmake@v10
+      name: Configure build
+      with:
+        configurePreset: ${{ matrix.target }}
+        configurePresetAdditionalArgs: "[ `-DTLSUV_TLSLIB=${{ matrix.tls }}`, `-DTLSUV_HTTP=${{ matrix.http }}`, `-DVCPKG_MANIFEST_FEATURES='test;samples;${{ matrix.tls }}'` ]"
+
+    - name: Build
+      id: build
+      run: |
+        cmake --build build
+
+    - name: Setup Golang with cache
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: tests/test_server/go.mod
+        cache-dependency-path: tests/test_server/go.sum
+
+    - name: build test server
+      run: |
+        cd ./tests/test_server
+        go build -o ${{ github.workspace }}/build/ .
+
+    - name: start test server
+      if: matrix.image != 'windows'
+      run: |
+        ${{ github.workspace }}/build/test-server -ca-key ./tests/certs/ca.key -ca ./tests/certs/ca.pem &
+
+    - name: start test server
+      if: matrix.image == 'windows'
+      run: |
+        Start-Process -FilePath ${{ github.workspace }}/build/test-server -ArgumentList "-ca-key","./tests/certs/ca.key","-ca","./tests/certs/ca.pem"
+
+    - name: Test
+      env:
+        TLSUV_TEST_LOG: 7
+      if: steps.build.outcome == 'success'
+      run: |
+        cd build
+        ctest --output-on-failure --no-compress-output -T test
+
+    - name: Memory Check
+      if: steps.build.outcome == 'success' && matrix.image == 'ubuntu'
+      env:
+        TLSUV_TEST_LOG: 7
+      run: |
+        cd build
+        ctest --output-on-failure --no-compress-output -T memcheck
+
+    - name: upload test summary
+      if: always()
+      uses: mikepenz/action-junit-report@v4
+      with:
+        detailed_summary: 'true'
+        report_paths: ${{ github.workspace }}/build/**/TEST-*.xml
+
+    - name: upload test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}-${{ matrix.tls }}${{ matrix.http == 'OFF' && '-nohttp' || '' }}-TestReport
+        path: ${{ github.workspace }}/build/Testing/

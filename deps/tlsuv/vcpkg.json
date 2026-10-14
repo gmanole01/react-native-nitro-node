@@ -1,0 +1,77 @@
+{
+  "name": "tlsuv",
+  "version-semver": "1.0.0",
+  "dependencies": [
+    "libuv"
+  ],
+  "default-features": [ "tls", "http" ],
+  "features": {
+    "tls": {
+      "description": "default TLS implementation",
+      "dependencies": [
+        {
+          "name": "tlsuv",
+          "platform": "!windows & !mingw",
+          "default-features": false,
+          "features": [ "openssl" ]
+        },
+        {
+          "name": "tlsuv",
+          "platform": "windows | mingw",
+          "$comment": "use windows native crypto",
+          "default-features": false
+        }
+      ]
+    },
+    "openssl": {
+      "description": "use OpenSSL",
+      "dependencies": [ "openssl" ]
+    },
+
+    "mbedtls": {
+      "description": "use mbedTLS",
+      "dependencies": [ "mbedtls" ]
+    },
+    "http": {
+      "description": "adds HTTP and websocket support",
+      "dependencies": [
+        "zlib",
+        "llhttp"
+      ]
+    },
+    "test": {
+      "description": "Dependencies for testing",
+      "dependencies": [
+        {
+          "name": "catch2",
+          "version>=": "2.13.9#1"
+        },
+        {
+          "name": "parson",
+          "$comment": "test response parsing/validations"
+        }
+      ]
+    },
+    "samples": {
+      "description": "Dependencies for samples",
+      "dependencies": [
+        {
+          "name": "getopt-win32",
+          "platform": "windows & !mingw"
+        }
+      ]
+    },
+    "all-deps": {
+      "description": "All dependencies",
+      "dependencies": [
+        {
+          "name": "tlsuv",
+          "features": [ "test", "samples", "mbedtls" ]
+        }
+      ]
+    }
+  },
+  "overrides": [
+  ],
+  "builtin-baseline": "62159a45e18f3a9ac0548628dcaf74fcb60c6ff9"
+}

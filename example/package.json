@@ -1,0 +1,42 @@
+{
+  "name": "react-native-nitro-node-example",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios --simulator='iPhone 16'",
+    "lint": "eslint .",
+    "start": "react-native start --reset-cache",
+    "test": "jest",
+    "pod": "bundle install && bundle exec pod install --project-directory=ios"
+  },
+  "dependencies": {
+    "@react-native/new-app-screen": "0.84.1",
+    "@reclaimprotocol/tls": "patch:@reclaimprotocol/tls@https%3A//github.com/reclaimprotocol/tls.git%23commit=c41fb4a02c8ae2da47112c5f25036ea9a2f2b983#~/.yarn/patches/@reclaimprotocol-tls-https-0cd2ccca7e.patch",
+    "buffer": "^6.0.3",
+    "react": "19.2.3",
+    "react-native": "0.84.1",
+    "react-native-device-info": "15.0.2",
+    "react-native-get-random-values": "^2.0.0",
+    "react-native-nitro-modules": "0.35.3",
+    "react-native-safe-area-context": "^5.5.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/plugin-transform-export-namespace-from": "^7.29.7",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.1.0",
+    "@react-native-community/cli-platform-android": "20.1.0",
+    "@react-native-community/cli-platform-ios": "20.1.0",
+    "@react-native/babel-preset": "0.84.1",
+    "@react-native/eslint-config": "0.84.1",
+    "@react-native/metro-config": "0.84.1",
+    "@react-native/typescript-config": "0.84.1",
+    "@types/jest": "^29.5.13",
+    "babel-plugin-module-resolver": "^5.0.2"
+  },
+  "engines": {
+    "node": ">= 22.11.0"
+  }
+}

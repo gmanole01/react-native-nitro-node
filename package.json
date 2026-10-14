@@ -1,0 +1,257 @@
+{
+  "name": "react-native-nitro-node",
+  "version": "0.1.0",
+  "description": "Node.js core modules (fs, net, tls, dns, http, https, buffer, os, path, process) for React Native, powered by Nitro Modules",
+  "license": "MIT",
+  "author": "George Manole",
+  "homepage": "https://gmanole.dev",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "react-native": "./src/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/index.d.ts",
+        "default": "./lib/module/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/index.d.ts",
+        "default": "./lib/commonjs/index.js"
+      }
+    },
+    "./buffer": {
+      "source": "./src/buffer/index.ts",
+      "react-native": "./src/buffer/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/buffer/index.d.ts",
+        "default": "./lib/module/buffer/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/buffer/index.d.ts",
+        "default": "./lib/commonjs/buffer/index.js"
+      }
+    },
+    "./dns": {
+      "source": "./src/dns/index.ts",
+      "react-native": "./src/dns/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/dns/index.d.ts",
+        "default": "./lib/module/dns/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/dns/index.d.ts",
+        "default": "./lib/commonjs/dns/index.js"
+      }
+    },
+    "./fs": {
+      "source": "./src/fs/index.ts",
+      "react-native": "./src/fs/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/fs/index.d.ts",
+        "default": "./lib/module/fs/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/fs/index.d.ts",
+        "default": "./lib/commonjs/fs/index.js"
+      }
+    },
+    "./http": {
+      "source": "./src/http/index.ts",
+      "react-native": "./src/http/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/http/index.d.ts",
+        "default": "./lib/module/http/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/http/index.d.ts",
+        "default": "./lib/commonjs/http/index.js"
+      }
+    },
+    "./https": {
+      "source": "./src/https/index.ts",
+      "react-native": "./src/https/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/https/index.d.ts",
+        "default": "./lib/module/https/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/https/index.d.ts",
+        "default": "./lib/commonjs/https/index.js"
+      }
+    },
+    "./net": {
+      "source": "./src/net/index.ts",
+      "react-native": "./src/net/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/net/index.d.ts",
+        "default": "./lib/module/net/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/net/index.d.ts",
+        "default": "./lib/commonjs/net/index.js"
+      }
+    },
+    "./os": {
+      "source": "./src/os/index.ts",
+      "react-native": "./src/os/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/os/index.d.ts",
+        "default": "./lib/module/os/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/os/index.d.ts",
+        "default": "./lib/commonjs/os/index.js"
+      }
+    },
+    "./path": {
+      "source": "./src/path/index.ts",
+      "react-native": "./src/path/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/path/index.d.ts",
+        "default": "./lib/module/path/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/path/index.d.ts",
+        "default": "./lib/commonjs/path/index.js"
+      }
+    },
+    "./process": {
+      "source": "./src/process/index.ts",
+      "react-native": "./src/process/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/process/index.d.ts",
+        "default": "./lib/module/process/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/process/index.d.ts",
+        "default": "./lib/commonjs/process/index.js"
+      }
+    },
+    "./tls": {
+      "source": "./src/tls/index.ts",
+      "react-native": "./src/tls/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/tls/index.d.ts",
+        "default": "./lib/module/tls/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/tls/index.d.ts",
+        "default": "./lib/commonjs/tls/index.js"
+      }
+    },
+    "./uv": {
+      "source": "./src/uv/index.ts",
+      "react-native": "./src/uv/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/uv/index.d.ts",
+        "default": "./lib/module/uv/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/uv/index.d.ts",
+        "default": "./lib/commonjs/uv/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "git clean -dfX",
+    "release": "semantic-release",
+    "build": "npm run typecheck && bob build",
+    "codegen": "nitrogen --logLevel=\"debug\" && npm run build",
+    "postcodegen": "npm --prefix example run pod"
+  },
+  "files": [
+    "src",
+    "react-native.config.js",
+    "lib",
+    "deps",
+    "nitrogen",
+    "cpp",
+    "nitro.json",
+    "android/build.gradle",
+    "android/fix-prefab.gradle",
+    "android/gradle.properties",
+    "android/CMakeLists.txt",
+    "android/src/**",
+    "ios/**/*.a",
+    "ios/**/*.h",
+    "ios/**/*.c",
+    "ios/**/*.m",
+    "ios/**/*.mm",
+    "ios/**/*.hpp",
+    "ios/**/*.cpp",
+    "ios/**/*.swift",
+    "ios/**/*.plist",
+    "app.plugin.js",
+    "*.podspec",
+    "README.md"
+  ],
+  "workspaces": [
+    "example"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gmanole01/react-native-nitro-node.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "events": "^3.3.0",
+    "http-parser-js": "^0.5.10",
+    "process": "^0.11.10",
+    "readable-stream": "^4.7.0",
+    "throughput": "^1.0.2"
+  },
+  "devDependencies": {
+    "@jamesacarr/eslint-formatter-github-actions": "^0.2.0",
+    "@reclaimprotocol/tls": "patch:@reclaimprotocol/tls@https%3A//github.com/reclaimprotocol/tls.git%23commit=c41fb4a02c8ae2da47112c5f25036ea9a2f2b983#~/.yarn/patches/@reclaimprotocol-tls-https-0cd2ccca7e.patch",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/events": "^3",
+    "@types/jest": "^29.5.12",
+    "@types/react": "19.2.0",
+    "@types/readable-stream": "^4",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "nitrogen": "0.35.3",
+    "react": "19.2.3",
+    "react-native": "0.84.1",
+    "react-native-builder-bob": "^0.40.18",
+    "react-native-nitro-modules": "0.35.3",
+    "semantic-release": "^25.0.3",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@reclaimprotocol/tls": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-nitro-modules": "*"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "commonjs",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json"
+        }
+      ]
+    ]
+  },
+  "packageManager": "yarn@4.13.0"
+}
