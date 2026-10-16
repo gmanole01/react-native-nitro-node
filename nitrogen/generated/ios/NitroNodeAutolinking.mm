@@ -16,6 +16,7 @@
 #include "HybridFs.hpp"
 #include "HybridFsConstants.hpp"
 #include "HybridOs.hpp"
+#include "HybridTls.hpp"
 
 @interface NitroNodeAutolinking : NSObject
 @end
@@ -78,6 +79,15 @@
                     "The HybridObject \"HybridOs\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridOs>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "NitroNodeTls",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridTls>,
+                    "The HybridObject \"HybridTls\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridTls>();
     }
   );
 }

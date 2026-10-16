@@ -48,24 +48,53 @@ Pod::Spec.new do |s|
     "deps/libuv/src/unix/proctitle.c",
     "deps/libuv/src/unix/bsd-ifaddrs.c",
     "deps/libuv/src/unix/kqueue.c",
+
+    # tlsuv: only its TLS engine (OpenSSL), not its HTTP client. Its headers
+    # are found through HEADER_SEARCH_PATHS, so its generic names (util.h,
+    # keychain.h, ...) stay out of the pod's header map.
+    "deps/tlsuv/src/tls_engine.c",
+    "deps/tlsuv/src/alloc.c",
+    "deps/tlsuv/src/um_debug.c",
+    "deps/tlsuv/src/keychain.c",
+    "deps/tlsuv/src/p11.c",
+    "deps/tlsuv/src/apple/keychain.c",
+    "deps/tlsuv/src/openssl/engine.c",
+    "deps/tlsuv/src/openssl/keys.c",
+  ]
+  s.preserve_paths = [
+    "deps/tlsuv/include/**/*.h",
+    "deps/tlsuv/src/**/*.h",
   ]
 
-  # Add vendored xcframework
-  s.vendored_frameworks = "ios/Frameworks/c-ares.xcframework"
+  # Add vendored xcframeworks. OpenSSL is built by scripts/build-openssl-ios.sh.
+  s.vendored_frameworks = [
+    "ios/Frameworks/c-ares.xcframework",
+    "ios/Frameworks/OpenSSL.xcframework",
+  ]
+  # tlsuv verifies certificates with Apple's trust store
+  s.frameworks = "Security", "CoreFoundation"
 
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => [
       # libuv
       '"$(PODS_TARGET_SRCROOT)/deps/libuv/include"',
+      # OpenSSL, from its xcframework (see scripts/build-openssl-ios.sh)
+      '"${PODS_XCFRAMEWORKS_BUILD_DIR}/NitroNode/OpenSSLHeaders"',
+      # tlsuv
+      '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/include"',
+      '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src"',
+      '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src/pkcs11"',
       # C++ implementation
       '"$(PODS_TARGET_SRCROOT)/cpp"',
       '"$(PODS_TARGET_SRCROOT)/cpp/core"',
-      '"$(PODS_TARGET_SRCROOT)/cpp/io"',
+      '"$(PODS_TARGET_SRCROOT)/cpp/net"',
       '"$(PODS_TARGET_SRCROOT)/cpp/dns"',
       '"$(PODS_TARGET_SRCROOT)/cpp/fs"',
       '"$(PODS_TARGET_SRCROOT)/cpp/os"',
       '"$(PODS_TARGET_SRCROOT)/cpp/tls"',
-    ].join(' ')
+    ].join(' '),
+    # tlsuv's TLS engine
+    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) TLS_IMPL=openssl USE_OPENSSL',
   }
 
   load 'nitrogen/generated/ios/NitroNode+autolinking.rb'

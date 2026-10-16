@@ -1,15 +1,11 @@
 {
   "$schema": "https://nitro.margelo.com/nitro.schema.json",
-  "cxxNamespace": [
-    "node"
-  ],
+  "cxxNamespace": ["node"],
   "ios": {
     "iosModuleName": "NitroNode"
   },
   "android": {
-    "androidNamespace": [
-      "node"
-    ],
+    "androidNamespace": ["node"],
     "androidCxxLibName": "NitroNode"
   },
   "autolinking": {
@@ -58,9 +54,13 @@
         "language": "kotlin",
         "implementationClassName": "HybridOs"
       }
+    },
+    "NitroNodeTls": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTls"
+      }
     }
   },
-  "ignorePaths": [
-    "**/node_modules"
-  ]
+  "ignorePaths": ["**/node_modules"]
 }

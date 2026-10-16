@@ -187,9 +187,17 @@ class WrappedDriver {
   // onClose once it is gone. False for a driver that was never connected.
   public open: boolean;
 
-  constructor(socket?: NitroNodeNetSocket | null | undefined) {
-    this.driver = socket ?? NitroNet.createSocket();
-    this.open = socket != null;
+  // Called once by release(), see Socket._nativeSocketReleased.
+  private onRelease: (() => void) | null;
+
+  constructor(
+    socket: NitroNodeNetSocket,
+    open: boolean,
+    onRelease: (() => void) | null = null,
+  ) {
+    this.driver = socket;
+    this.open = open;
+    this.onRelease = onRelease;
     this._attachListeners();
   }
 
@@ -212,6 +220,10 @@ class WrappedDriver {
   public release() {
     this.resetEvents();
     this.open = false;
+
+    const onRelease = this.onRelease;
+    this.onRelease = null;
+    onRelease?.();
 
     this.driver.onConnect = noop;
     this.driver.onRead = noop;
@@ -290,12 +302,8 @@ class WrappedDriver {
   }
 }
 
-function createSocketDriver() {
-  return new WrappedDriver();
-}
-
 function wrapSocketDriver(socket: NitroNodeNetSocket) {
-  return new WrappedDriver(socket);
+  return new WrappedDriver(socket, true);
 }
 
 // How long a connection attempt may take, in milliseconds, before the next
@@ -679,8 +687,6 @@ class Socket extends Duplex {
     }
   }
 
-  protected _afterEmitConnect() {}
-
   /**
    * Drops the native socket and its callbacks. Nothing native is reported
    * after this, so whoever calls it is responsible for emitting 'close'.
@@ -745,9 +751,7 @@ class Socket extends Duplex {
     const address = this._connectAddresses.shift() as string;
     const port = this._connectPort;
 
-    this._beforeConnect(address, port);
     this._nativeSocket!.connect(address, port);
-    this._afterConnect(address, port);
 
     if (this._connectAddresses.length > 0) {
       // An address that never answers would hold up the ones after it for as
@@ -788,7 +792,7 @@ class Socket extends Duplex {
       }
     }
 
-    this._nativeSocket = createSocketDriver();
+    this._nativeSocket = this._createSocketDriver();
     this._attachListeners();
     this._applySocketOptions();
     this._connectNext();
@@ -847,8 +851,6 @@ class Socket extends Duplex {
 
     this.emit('connect');
     this.emit('ready');
-
-    this._afterEmitConnect();
 
     // resume after emitting the event
     // maybe we get "pause"
@@ -1122,9 +1124,26 @@ class Socket extends Duplex {
     return this;
   }
 
-  protected _beforeConnect(host: string, port: number) {}
+  /**
+   * Creates the native socket for a connection attempt (each attempt gets a
+   * new one). tls overrides it to create a TLS socket instead.
+   */
+  protected _createNativeSocket(): NitroNodeNetSocket {
+    return NitroNet.createSocket();
+  }
 
-  protected _afterConnect(host: string, port: number) {}
+  /**
+   * The native socket of an attempt is dropped for good, see
+   * WrappedDriver.release(). An override releases what it attached itself.
+   */
+  protected _nativeSocketReleased(_socket: NitroNodeNetSocket): void {}
+
+  private _createSocketDriver(): WrappedDriver {
+    const socket = this._createNativeSocket();
+    return new WrappedDriver(socket, false, () =>
+      this._nativeSocketReleased(socket),
+    );
+  }
 
   /**
    * Opens the connection. `host` defaults to '127.0.0.1'; a host name is
@@ -1163,7 +1182,7 @@ class Socket extends Duplex {
     }
 
     // init the connect here
-    this._nativeSocket = createSocketDriver();
+    this._nativeSocket = this._createSocketDriver();
 
     // attach listeners
     this._attachListeners();

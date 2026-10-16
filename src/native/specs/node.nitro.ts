@@ -57,14 +57,66 @@ export interface NitroNodeNetServer
   getSockName(): SockAddr | null;
 }
 
+/** How a TLS client connection is set up, see NitroNodeTlsSocket.startTls(). */
+export interface TlsClientOptions {
+  /** Sent as SNI, and the name the server's certificate has to match. */
+  servername?: string;
+  /** ALPN protocols to offer, most preferred first. */
+  ALPNProtocols?: string[];
+  /** Fail the handshake when the server's certificate can't be verified. */
+  rejectUnauthorized: boolean;
+}
+
+/**
+ * A TCP socket that speaks TLS. JS drives it exactly like a NitroNodeNetSocket
+ * (the members up to getPeerName are the same): onRead delivers decrypted data
+ * and write() takes plaintext.
+ */
 // prettier-ignore
-export interface NitroNodeNetTlsSocket extends HybridObject<{ android: 'c++', ios: 'c++' }> {}
+export interface NitroNodeTlsSocket extends HybridObject<{ android: 'c++', ios: 'c++' }> {
+  // Properties
+  onConnect: (status: number) => void;
+  onRead: (data: ArrayBuffer, status: number) => void;
+  onWrite: (id: number, status: number) => void;
+  onClose: () => void;
+
+  // Methods
+  pause(): void;
+  resume(): void;
+  shutdown(): void;
+  close(): void;
+  write(id: number, buffer: ArrayBuffer): void;
+  connect(host: string, port: number): void;
+  getWriteQueueSize(): number;
+
+  // Both can be called before connect(), the setting is applied once connected.
+  setNoDelay(enable: boolean): void;
+  // A delay of 0 keeps the system's default.
+  setKeepAlive(enable: boolean, initialDelaySeconds: number): void;
+
+  getSockName(): SockAddr | null;
+  getPeerName(): SockAddr | null;
+
+  // TLS
+  /** The handshake finished: without an error it succeeded. */
+  onSecure: (error?: string) => void;
+
+  /**
+   * Starts the client handshake as soon as the socket is connected (right
+   * away when it already is). Writes made before the handshake finishes are
+   * sent after it.
+   */
+  startTls(options: TlsClientOptions): void;
+
+  /** The protocol the server picked with ALPN, once secure. */
+  getAlpnProtocol(): string | undefined;
+}
 
 // prettier-ignore
-export interface NitroNodeNetTlsServer extends HybridObject<{ android: 'c++', ios: 'c++' }> {}
+export interface NitroNodeTlsServer extends HybridObject<{ android: 'c++', ios: 'c++' }> {}
 
 // prettier-ignore
-export interface NitroNodeNetTlsSecureContext extends HybridObject<{ android: 'c++'; ios: 'c++' }> {}
+export interface NitroNodeTlsSecureContext extends HybridObject<{ android: 'c++'; ios: 'c++' }> {}
 
 // prettier-ignore
 export interface NitroNodeUv extends HybridObject<{ android: 'c++'; ios: 'c++' }> {
@@ -166,7 +218,8 @@ export interface NitroNodeDnsInit extends HybridObject<{ android: 'kotlin' }> {
  * The app's folders, for Node's os module. On Android they come from the app's
  * Context, so the implementation is in Kotlin there.
  */
-export interface NitroNodeOs extends HybridObject<{ ios: 'c++'; android: 'kotlin' }> {
+export interface NitroNodeOs
+  extends HybridObject<{ ios: 'c++'; android: 'kotlin' }> {
   /** iOS: $TMPDIR. Android: Context.getCacheDir(). */
   tmpdir(): string;
   /** iOS: $HOME, the app's sandbox. Android: the app's data directory. */
@@ -184,9 +237,13 @@ export interface NitroNodeDns extends HybridObject<{ android: 'c++'; ios: 'c++' 
 export interface NitroNodeNet extends HybridObject<{ android: 'c++', ios: 'c++' }> {
   createSocket(): NitroNodeNetSocket;
   createServer(): NitroNodeNetServer;
-  createTlsSocket(): NitroNodeNetTlsSocket;
-  createTlsServer(): NitroNodeNetTlsServer;
-  createTlsSecureContext(): NitroNodeNetTlsSecureContext;
+}
+
+// prettier-ignore
+export interface NitroNodeTls extends HybridObject<{ android: 'c++', ios: 'c++' }> {
+  createTlsSocket(): NitroNodeTlsSocket;
+  createTlsServer(): NitroNodeTlsServer;
+  createTlsSecureContext(): NitroNodeTlsSecureContext;
 }
 
 /**

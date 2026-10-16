@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, running on a real libuv event loop.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `buffer` · `os` · `path` · `process`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `buffer` · `os` · `path` · `process`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -30,13 +30,13 @@ server.listen(8080, '0.0.0.0', () => {
 });
 ```
 
-Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js's own event loop. The library compiles it into your app and exposes it to JavaScript through **[Nitro Modules](https://nitro.margelo.com)**, with direct JSI bindings and no bridge.
+Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js's own event loop, and **[OpenSSL](https://www.openssl.org)** for TLS, like in Node. The library compiles them into your app and exposes them to JavaScript through **[Nitro Modules](https://nitro.margelo.com)**, with direct JSI bindings and no bridge.
 
 ## ✨ Features
 
 - 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are backed by libuv `uv_tcp_t` handles, not by a WebSocket or a platform HTTP stack.
 - 🌐 **HTTP client and server:** an `http` module with streaming bodies, chunked encoding, keep-alive and upgrade/CONNECT events.
-- 🔒 **TLS client:** TLS 1.2 and 1.3 sockets and `https` requests, built on a pure-JavaScript TLS stack over the native TCP socket. *(Read the [security note](#-security-note) first.)*
+- 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, with certificate verification against the system's trust store, SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
 - 📁 **File system:** `fs` with files, file descriptors, directories and `statfs`, in callback and `*Sync` forms. Reads and writes run off the JS thread.
 - 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` are powered by **[c-ares](https://c-ares.org)**, which Node also uses.
 - 🧵 **Off the JS thread:** all I/O runs on a dedicated libuv loop thread. Results are delivered back to JavaScript as events.
@@ -52,24 +52,13 @@ npm install react-native-nitro-node react-native-nitro-modules
 yarn add react-native-nitro-node react-native-nitro-modules
 ```
 
-For `tls` and `https`, also install the TLS stack and a source of secure randomness:
-
-```sh
-yarn add @reclaimprotocol/tls react-native-get-random-values
-```
-
-```ts
-// index.js: must run before anything else
-import 'react-native-get-random-values';
-```
-
 Then install the native code:
 
 ```sh
 cd ios && pod install
 ```
 
-Android needs no extra steps; autolinking picks the library up.
+Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt with the package for both platforms, so there is nothing else to install.
 
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
@@ -80,7 +69,7 @@ Android needs no extra steps; autolinking picks the library up.
 |---|---|
 | React Native | New Architecture |
 | `react-native-nitro-modules` | 0.35 |
-| iOS | React Native's minimum |
+| iOS | 15.1 |
 | Android | API 23 (Android 6.0) |
 
 ## 🚀 Usage
@@ -94,6 +83,8 @@ import tls from 'react-native-nitro-node/tls';
 import dns from 'react-native-nitro-node/dns';
 import http from 'react-native-nitro-node/http';
 import https from 'react-native-nitro-node/https';
+import { EventEmitter } from 'react-native-nitro-node/events';
+import { Readable, pipeline } from 'react-native-nitro-node/stream';
 import os from 'react-native-nitro-node/os';
 import path from 'react-native-nitro-node/path';
 import process from 'react-native-nitro-node/process';
@@ -202,11 +193,50 @@ req.end(JSON.stringify({ hello: 'world' }));
 import tls from 'react-native-nitro-node/tls';
 
 const socket = tls.connect(443, 'example.com', () => {
-  console.log('handshake complete');
+  // 'secureConnect': the handshake is done and the certificate was verified
+  console.log('authorized:', socket.authorized, 'ALPN:', socket.alpnProtocol);
   socket.write('GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n');
 });
 
 socket.on('data', (data) => console.log(data.toString()));
+socket.on('error', (err) => console.error(err.message)); // e.g. 'certificate verify failed'
+```
+
+`servername` (SNI, and the name the certificate must match) defaults to the host. Pass `ALPNProtocols` to negotiate a protocol, and only for testing, `rejectUnauthorized: false` to skip verification:
+
+```ts
+tls.connect({ host: '192.168.1.10', port: 8443, servername: 'my-server.local', ALPNProtocols: ['http/1.1'] });
+```
+
+### Events
+
+`events` re-exports [`EventEmitter`](https://www.npmjs.com/package/events), the same class the sockets and servers are built on:
+
+```ts
+import { EventEmitter } from 'react-native-nitro-node/events';
+
+const bus = new EventEmitter();
+bus.on('ping', (n: number) => console.log('ping', n));
+bus.emit('ping', 1);
+```
+
+### Streams
+
+`stream` re-exports [`readable-stream`](https://www.npmjs.com/package/readable-stream), Node's own streams packaged for other platforms. Sockets, HTTP bodies and requests are these streams, so they combine with your own:
+
+```ts
+import { Transform, promises } from 'react-native-nitro-node/stream';
+import net from 'react-native-nitro-node/net';
+
+// a shouting echo server
+net.createServer(async (socket) => {
+  const upperCase = new Transform({
+    transform(chunk, _encoding, callback) {
+      callback(null, chunk.toString().toUpperCase());
+    },
+  });
+  await promises.pipeline(socket, upperCase, socket);
+}).listen(7000);
 ```
 
 ### DNS
@@ -278,10 +308,13 @@ dns.lookup('nope.invalid', (err) => {
 
 | API | Status | Notes |
 |---|:---:|---|
-| `tls.connect()` | 🟡 | `host` and `port` only. TLS 1.2 and 1.3 with modern AEAD cipher suites. **No certificate verification yet.** |
-| `tls.TLSSocket` | 🟡 | Client side; emits `secureConnect` |
+| `tls.connect()` | ✅ | TLS 1.2 and 1.3 on OpenSSL. `host`, `port`, `servername`, `rejectUnauthorized` (default `true`), `ALPNProtocols`, plus `net.connect()`'s `family`, `lookup`, `timeout`, … |
+| `tls.TLSSocket` | 🟡 | Client side, created by `tls.connect()`. `encrypted`, `authorized`, `alpnProtocol`, `servername`; emits `connect`, then `secureConnect` |
+| Certificate verification | ✅ | Against the system's trust store, including the host name. See the [security notes](#-security-notes) |
+| `getPeerCertificate()`, `getProtocol()`, `getCipher()`, `authorizationError` | ❌ | Planned |
+| `ca`, `cert`, `key`, `tls.createSecureContext()` | ❌ | Planned: custom CAs and client certificates |
+| `new TLSSocket(socket)` / `tls.connect({ socket })` | ❌ | TLS over an existing socket (STARTTLS, proxies) is planned |
 | `tls.createServer()` | ❌ | Planned |
-| `servername`, `ca`, `cert`, `key`, `rejectUnauthorized`, ALPN | ❌ | Planned |
 
 ### `http`
 
@@ -298,7 +331,7 @@ dns.lookup('nope.invalid', (err) => {
 
 | API | Status | Notes |
 |---|:---:|---|
-| `https.request()` / `https.get()` | 🟡 | Same as `http`, over `tls` (so the same certificate caveat applies) |
+| `https.request()` / `https.get()` | ✅ | Same as `http`, over `tls`, with `servername` and `rejectUnauthorized` |
 | `https.createServer()` | ❌ | Waits on `tls.createServer()` |
 
 ### `dns`
@@ -311,10 +344,12 @@ dns.lookup('nope.invalid', (err) => {
 | `dns.promises` | ❌ | Planned |
 | `resolveMx`, `resolveTxt`, `resolveSrv`, `reverse`, … | ❌ | Planned |
 
-### `buffer`, `os`, `path`, `process`
+### `events`, `stream`, `buffer`, `os`, `path`, `process`
 
 | API | Status | Notes |
 |---|:---:|---|
+| `events.EventEmitter` | ✅ | Re-exports the [`events`](https://www.npmjs.com/package/events) package |
+| `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
 | `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
 | `os.EOL` | ✅ | |
@@ -327,24 +362,26 @@ dns.lookup('nope.invalid', (err) => {
 ```mermaid
 flowchart TB
     subgraph JS["JavaScript (Hermes)"]
-        API["net · tls · http · https · dns<br/><sub>Node-compatible TypeScript API</sub>"]
-        TLS["Pure-JS TLS 1.2 / 1.3"]
+        API["net · tls · http · https · dns · fs<br/><sub>Node-compatible TypeScript API</sub>"]
     end
 
     subgraph Native["Native (C++)"]
         Nitro["Nitro HybridObjects<br/><sub>JSI, no bridge</sub>"]
         Loop["libuv event loop<br/><sub>dedicated thread</sub>"]
+        TLS["TLS socket<br/><sub>OpenSSL 3, via tlsuv</sub>"]
         Ares["c-ares<br/><sub>async DNS</sub>"]
     end
 
-    OS[("iOS / Android<br/>BSD sockets")]
+    OS[("iOS / Android<br/>BSD sockets · trust store")]
 
     API --> Nitro
-    TLS --> API
     Nitro -- "post work" --> Loop
     Loop -- "callbacks → events" --> Nitro
+    Nitro --> TLS
+    TLS -- "ciphertext" --> Loop
     Nitro --> Ares
     Loop --> OS
+    TLS --> OS
     Ares --> OS
 ```
 
@@ -352,19 +389,32 @@ flowchart TB
 - **Nitro Modules** generate the C++ ↔ JS bindings, so every call goes straight through JSI with no serialization over a bridge.
 - **c-ares** performs DNS resolution asynchronously. On Android it's initialized with the system's DNS servers from `ConnectivityManager`.
 - **fs** calls go straight to POSIX. The short ones run on the JS thread, inside a `setImmediate` for the callback forms; reads and writes run on Nitro's thread pool.
-- **TLS** runs in JavaScript ([`@reclaimprotocol/tls`](https://github.com/reclaimprotocol/tls)) on top of the native TCP socket. That keeps the native side small and the same on every platform.
+- **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
+- **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
 
-## 🔐 Security note
+## 🔐 Security notes
+
+`tls.connect()` and `https.request()` verify the server's certificate by default: the chain must lead to a root the system trusts, the certificate must be valid now, and it must be issued for the host name (`servername`). A connection that fails these checks fails with an error before any data is sent.
+
+Know the limits:
 
 > [!WARNING]
-> **TLS certificates are not verified yet.** `tls.connect()` and `https.request()` encrypt traffic, but they do not check that the server's certificate is valid or matches the host name. That leaves connections open to man-in-the-middle attacks. Don't use them for sensitive data until certificate verification ships (it's at the top of the [roadmap](#️-roadmap)).
+> - **`rejectUnauthorized: false` turns all of that off.** The connection is still encrypted, but to anyone who answers. Use it for local testing only.
+> - **Connecting to an IP address checks no name.** Without a host name there is no SNI and nothing to match, so only the chain is verified. Pass a `servername` when the server's certificate has one.
+
+> [!NOTE]
+> - **Android: only the system's CA certificates count.** User-installed CAs, your app's [Network Security Config](https://developer.android.com/privacy-and-security/security-config) and its certificate pinning do not apply to this library's connections, and certificates are not checked for revocation.
+> - **Errors are not as detailed as Node's.** A refused certificate fails with `certificate verify failed`, without Node's codes such as `CERT_HAS_EXPIRED` or `ERR_TLS_CERT_ALTNAME_INVALID`.
+> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. On iOS, linking it next to another library that bundles its own OpenSSL can fail with duplicate symbols.
 
 ## 🗺️ Roadmap
 
 ### Next up
-- [ ] **TLS certificate verification** against the platform trust store, with `rejectUnauthorized`, `ca` and `servername` (SNI)
 - [ ] `tls.createServer()` and `https.createServer()`
-- [ ] ALPN negotiation
+- [ ] Custom CAs and client certificates (`ca`, `cert`, `key`, `tls.createSecureContext()`)
+- [ ] `getPeerCertificate()`, `authorizationError` and Node's certificate error codes
+- [ ] Certificate checks for IP addresses
+- [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
 - [ ] `http.Agent` with connection pooling and keep-alive reuse
 - [ ] `dns.promises` and `fs.promises`
 - [ ] `fs.stat` / `lstat` / `fstat` with `Stats`, and `readdir({ withFileTypes })`
@@ -374,14 +424,16 @@ flowchart TB
 - [ ] More DNS record types: `resolveMx`, `resolveTxt`, `resolveSrv`, `resolveCname`, `resolveNs`, `reverse`
 - [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
-- [ ] `events`, `stream`, `url` and `util` entry points, for a fuller drop-in `node:*` replacement
+- [ ] `url` and `util` entry points, for a fuller drop-in `node:*` replacement
 - [ ] A Metro resolver preset that maps `node:net`, `net`, `http`, … to this library, so existing npm packages work without changes
 
 ### Done
 - [x] `net`: TCP client and server on libuv
 - [x] `dns`: `lookup` and `resolve4`/`resolve6` on c-ares
 - [x] `http`: client and server
-- [x] `tls` / `https`: TLS 1.2 and 1.3 client
+- [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
+- [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
+- [x] `events` and `stream` entry points
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `fs`: files, file descriptors, directories and `statfs`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` helpers
@@ -413,8 +465,9 @@ Then rebuild the example app to try your change.
 
 - [libuv](https://libuv.org): the event loop at the heart of Node.js, and of this library
 - [c-ares](https://c-ares.org): asynchronous DNS resolution
+- [OpenSSL](https://www.openssl.org): the TLS implementation, licensed under the Apache License 2.0
+- [tlsuv](https://github.com/openziti/tlsuv) by NetFoundry: the TLS engine layer over OpenSSL, licensed under the MIT License
 - [Nitro Modules](https://nitro.margelo.com) by Margelo: the fastest way to build native modules for React Native
-- [@reclaimprotocol/tls](https://github.com/reclaimprotocol/tls): the TLS 1.2/1.3 implementation in TypeScript
 - [Node.js](https://nodejs.org): for the APIs this library follows
 
 ## 📄 License

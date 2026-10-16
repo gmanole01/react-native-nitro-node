@@ -344,7 +344,22 @@ static X509_LOOKUP_METHOD * old_hash_lookup(void) {
 }
 
 #if __APPLE__
+// react-native-nitro-node: checks the server's name, which the original did
+// not. OpenSSL has no trust store on Apple platforms, so its verdict on the
+// chain means nothing and SecTrust decides instead. Its name check
+// (SSL_set1_host) is a real one, though: keep its failures, and also give
+// SecTrust the TLS server policy for that name, not just a chain check.
 static int apple_ca_verify(int pre_verify, X509_STORE_CTX *st) {
+    if (!pre_verify) {
+        switch (X509_STORE_CTX_get_error(st)) {
+            case X509_V_ERR_HOSTNAME_MISMATCH:
+            case X509_V_ERR_IP_ADDRESS_MISMATCH:
+            case X509_V_ERR_EMAIL_MISMATCH:
+                return 0;
+            default:
+                break;
+        }
+    }
 
     CFMutableArrayRef certs = CFArrayCreateMutable(kCFAllocatorDefault, 10, &kCFTypeArrayCallBacks);
 
@@ -357,20 +372,37 @@ static int apple_ca_verify(int pre_verify, X509_STORE_CTX *st) {
         OPENSSL_free(der);
 
         SecCertificateRef c = SecCertificateCreateWithData(kCFAllocatorDefault, d);
-        CFArrayAppendValue(certs, c);
         CFRelease(d);
+        if (c == NULL) {
+            continue;
+        }
+        CFArrayAppendValue(certs, c);
         CFRelease(c);
     }
     sk_X509_pop_free(chain, X509_free);
 
-    SecTrustRef trust;
-    SecPolicyRef policy = SecPolicyCreateBasicX509();
+    // The name given to SSL_set1_host (the servername), if any.
+    const char *host = X509_VERIFY_PARAM_get0_host(X509_STORE_CTX_get0_param(st), 0);
+    CFStringRef hostname = host != NULL
+            ? CFStringCreateWithCString(kCFAllocatorDefault, host, kCFStringEncodingUTF8)
+            : NULL;
+    SecPolicyRef policy = SecPolicyCreateSSL(true, hostname);
 
+    SecTrustRef trust = NULL;
     CFErrorRef err = NULL;
     bool result =
+            CFArrayGetCount(certs) > 0 &&
             SecTrustCreateWithCertificates(certs, policy, &trust) == errSecSuccess &&
             SecTrustEvaluateWithError(trust, &err);
-    CFRelease(trust);
+    if (err != NULL) {
+        CFRelease(err);
+    }
+    if (trust != NULL) {
+        CFRelease(trust);
+    }
+    if (hostname != NULL) {
+        CFRelease(hostname);
+    }
     CFRelease(policy);
     CFRelease(certs);
 

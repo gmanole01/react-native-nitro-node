@@ -17,19 +17,10 @@
 namespace margelo::nitro::node { class HybridNitroNodeNetSocketSpec; }
 // Forward declaration of `HybridNitroNodeNetServerSpec` to properly resolve imports.
 namespace margelo::nitro::node { class HybridNitroNodeNetServerSpec; }
-// Forward declaration of `HybridNitroNodeNetTlsSocketSpec` to properly resolve imports.
-namespace margelo::nitro::node { class HybridNitroNodeNetTlsSocketSpec; }
-// Forward declaration of `HybridNitroNodeNetTlsServerSpec` to properly resolve imports.
-namespace margelo::nitro::node { class HybridNitroNodeNetTlsServerSpec; }
-// Forward declaration of `HybridNitroNodeNetTlsSecureContextSpec` to properly resolve imports.
-namespace margelo::nitro::node { class HybridNitroNodeNetTlsSecureContextSpec; }
 
 #include <memory>
 #include "HybridNitroNodeNetSocketSpec.hpp"
 #include "HybridNitroNodeNetServerSpec.hpp"
-#include "HybridNitroNodeNetTlsSocketSpec.hpp"
-#include "HybridNitroNodeNetTlsServerSpec.hpp"
-#include "HybridNitroNodeNetTlsSecureContextSpec.hpp"
 
 namespace margelo::nitro::node {
 
@@ -64,9 +55,6 @@ namespace margelo::nitro::node {
       // Methods
       virtual std::shared_ptr<HybridNitroNodeNetSocketSpec> createSocket() = 0;
       virtual std::shared_ptr<HybridNitroNodeNetServerSpec> createServer() = 0;
-      virtual std::shared_ptr<HybridNitroNodeNetTlsSocketSpec> createTlsSocket() = 0;
-      virtual std::shared_ptr<HybridNitroNodeNetTlsServerSpec> createTlsServer() = 0;
-      virtual std::shared_ptr<HybridNitroNodeNetTlsSecureContextSpec> createTlsSecureContext() = 0;
 
     protected:
       // Hybrid Setup

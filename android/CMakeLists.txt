@@ -12,12 +12,17 @@ add_compile_options(-DRN_SERIALIZABLE_STATE=1)
 set(LIBUV_SRC "../deps/libuv")
 set(LIBUV_BUILD "${CMAKE_BINARY_DIR}/libuv_build")
 add_subdirectory(${LIBUV_SRC} ${LIBUV_BUILD})
+# tlsuv looks for this target first. Without it, it asks pkg-config for a
+# system libuv: missing on most machines, and the host's (e.g. Homebrew's)
+# headers where there is one.
+add_library(libuv::uv ALIAS uv)
 
-# set(TLSUV_HTTP OFF CACHE BOOL "disable HTTP support" FORCE)
-# set(TLSUV_TLSLIB "openssl" CACHE STRING "TLS implementation library ${supported_tls_libs}" FORCE)
-# set(TLSUV_SRC "../deps/tlsuv")
-# set(TLSUV_BUILD "${CMAKE_BINARY_DIR}/tlsuv_build")
-# add_subdirectory(${TLSUV_SRC} ${TLSUV_BUILD})
+set(TLSUV_HTTP OFF CACHE BOOL "disable HTTP support" FORCE)
+set(TLSUV_TLSLIB "openssl" CACHE STRING "TLS implementation library ${supported_tls_libs}" FORCE)
+set(TLSUV_SRC "../deps/tlsuv")
+set(TLSUV_BUILD "${CMAKE_BINARY_DIR}/tlsuv_build")
+add_subdirectory(${TLSUV_SRC} ${TLSUV_BUILD})
+
 set(CARES_SRC "../deps/c-ares")
 set(CARES_BUILD "${CMAKE_BINARY_DIR}/cares_build")
 add_subdirectory(${CARES_SRC} ${CARES_BUILD})
@@ -25,16 +30,17 @@ add_subdirectory(${CARES_SRC} ${CARES_BUILD})
 # Define C++ library and add all sources
 add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/cpp-adapter.cpp
-        ../cpp/HybridNet.cpp
         ../cpp/core/UVLoop.cpp
         ../cpp/dns/HybridDns.cpp
         ../cpp/fs/HybridFs.cpp
-        ../cpp/io/HybridNetServer.cpp
-        ../cpp/io/HybridNetSocket.cpp
-        ../cpp/io/SockAddrUtil.cpp
-        ../cpp/tls/HybridNetTlsSocket.cpp
-        ../cpp/tls/HybridNetTlsServer.cpp
-        ../cpp/tls/HybridNetTlsSecureContext.cpp
+        ../cpp/net/HybridNet.cpp
+        ../cpp/net/HybridNetServer.cpp
+        ../cpp/net/HybridNetSocket.cpp
+        ../cpp/net/SockAddrUtil.cpp
+        ../cpp/tls/HybridTls.cpp
+        ../cpp/tls/HybridTlsSocket.cpp
+        ../cpp/tls/HybridTlsServer.cpp
+        ../cpp/tls/HybridTlsSecureContext.cpp
 )
 
 # Add Nitrogen specs :)
@@ -45,7 +51,7 @@ include_directories(
         "src/main/cpp"
         "../cpp"
         "../cpp/core"
-        "../cpp/io"
+        "../cpp/net"
         "../cpp/dns"
         "../cpp/fs"
         "../cpp/tls"
@@ -54,8 +60,7 @@ include_directories(
 target_include_directories(${PACKAGE_NAME} PRIVATE
         ../deps/libuv/include
         ../deps/c-ares/include
-
-        # ../deps/tlsuv/include
+        ../deps/tlsuv/include
 )
 
 find_library(LOG_LIB log)
@@ -64,9 +69,8 @@ find_library(LOG_LIB log)
 target_link_libraries(
         ${PACKAGE_NAME}
         ${LOG_LIB}
-        android # <-- Android core
+        android
         uv
-
-        # tlsuv
+        tlsuv
         c-ares
 )

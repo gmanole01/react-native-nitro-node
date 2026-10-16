@@ -16,9 +16,6 @@ namespace margelo::nitro::node {
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("createSocket", &HybridNitroNodeNetSpec::createSocket);
       prototype.registerHybridMethod("createServer", &HybridNitroNodeNetSpec::createServer);
-      prototype.registerHybridMethod("createTlsSocket", &HybridNitroNodeNetSpec::createTlsSocket);
-      prototype.registerHybridMethod("createTlsServer", &HybridNitroNodeNetSpec::createTlsServer);
-      prototype.registerHybridMethod("createTlsSecureContext", &HybridNitroNodeNetSpec::createTlsSecureContext);
     });
   }
 

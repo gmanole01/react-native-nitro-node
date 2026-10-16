@@ -7,9 +7,12 @@ import type {
   NitroNodeNetSocket,
   NitroNodeNetServer,
   NitroNodeOs,
+  NitroNodeTls,
+  NitroNodeTlsSocket,
   NitroNodeUv,
   SockAddr,
   StatFs,
+  TlsClientOptions,
 } from './specs/node.nitro';
 import { NitroDnsInit } from './dns-init';
 
@@ -18,6 +21,8 @@ export const NitroUv =
   NitroModules.createHybridObject<NitroNodeUv>('NitroNodeUv');
 export const NitroNet =
   NitroModules.createHybridObject<NitroNodeNet>('NitroNodeNet');
+export const NitroTls =
+  NitroModules.createHybridObject<NitroNodeTls>('NitroNodeTls');
 export const NitroDns =
   NitroModules.createHybridObject<NitroNodeDns>('NitroNodeDns');
 export { NitroDnsInit };
@@ -33,6 +38,8 @@ export type {
   NitroNodeNet,
   NitroNodeNetSocket,
   NitroNodeNetServer,
+  NitroNodeTlsSocket,
   SockAddr,
   StatFs,
+  TlsClientOptions,
 };

@@ -2,15 +2,34 @@ import * as http from '../http';
 import * as tls from '../tls';
 
 // types
-import type { RequestOptions, URLLike } from '../http';
+import type { URLLike } from '../http';
 import type { IncomingMessage } from '../http';
 import type { Socket } from '../net';
 
-export type { RequestOptions };
+/** Node's https.RequestOptions, the supported part of it. */
+export interface RequestOptions extends http.RequestOptions {
+  /** The name the server's certificate has to match. Defaults to the host. */
+  servername?: string;
+  /**
+   * Fail when the server's certificate can't be verified against the system's
+   * trust store. Defaults to true.
+   */
+  rejectUnauthorized?: boolean;
+}
 
 type ResponseCallback = (res: IncomingMessage) => void;
 
 export class ClientRequest extends http.ClientRequest {
+  constructor(url: string | URLLike | RequestOptions, callback?: ResponseCallback);
+  constructor(url: string | URLLike, options: RequestOptions, callback?: ResponseCallback);
+  constructor(
+    urlOrOptions: string | URLLike | RequestOptions,
+    optionsOrCallback?: RequestOptions | ResponseCallback,
+    callback?: ResponseCallback,
+  ) {
+    super(urlOrOptions as string, optionsOrCallback as RequestOptions, callback);
+  }
+
   protected get _protocol(): string {
     return 'https:';
   }
@@ -23,10 +42,17 @@ export class ClientRequest extends http.ClientRequest {
     options: RequestOptions,
     callback: (err: Error | null, socket: Socket | null) => void,
   ): Socket {
-    const socket = tls.connect({ host: options.host, port: options.port });
+    const socket = tls.connect({
+      host: options.host,
+      port: options.port,
+      family: options.family,
+      lookup: options.lookup,
+      servername: options.servername,
+      rejectUnauthorized: options.rejectUnauthorized,
+    });
 
     let called = false;
-    function onConnect() {
+    function onSecure() {
       if (called) {
         return;
       }
@@ -42,16 +68,13 @@ export class ClientRequest extends http.ClientRequest {
     }
 
     socket.once('error', onError);
-    socket.once('secureConnect', onConnect);
+    socket.once('secureConnect', onSecure);
 
     return socket;
   }
 }
 
-/**
- * Not available yet: TLS does not verify certificates, so requests over it
- * would not be secure. Throws.
- */
+/** Like http.request(), over TLS. */
 export function request(
   url: string | URLLike | RequestOptions,
   callback?: ResponseCallback,
@@ -61,14 +84,19 @@ export function request(
   options: RequestOptions,
   callback?: ResponseCallback,
 ): ClientRequest;
-export function request(): ClientRequest {
-  throw new Error('https.request() is not implemented yet');
+export function request(
+  url: string | URLLike | RequestOptions,
+  optionsOrCallback?: RequestOptions | ResponseCallback,
+  callback?: ResponseCallback,
+): ClientRequest {
+  return new ClientRequest(
+    url as string,
+    optionsOrCallback as RequestOptions,
+    callback,
+  );
 }
 
-/**
- * Not available yet: TLS does not verify certificates, so requests over it
- * would not be secure. Throws.
- */
+/** Like request(), for a GET request that is sent right away. */
 export function get(
   url: string | URLLike | RequestOptions,
   callback?: ResponseCallback,
@@ -78,6 +106,16 @@ export function get(
   options: RequestOptions,
   callback?: ResponseCallback,
 ): ClientRequest;
-export function get(): ClientRequest {
-  throw new Error('https.get() is not implemented yet');
+export function get(
+  url: string | URLLike | RequestOptions,
+  optionsOrCallback?: RequestOptions | ResponseCallback,
+  callback?: ResponseCallback,
+): ClientRequest {
+  const req = request(
+    url as string,
+    optionsOrCallback as RequestOptions,
+    callback,
+  );
+  req.end();
+  return req;
 }

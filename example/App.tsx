@@ -16,6 +16,7 @@ import {
   type MemorySample,
   runMemoryTest,
 } from './memoryTest';
+import https from 'react-native-nitro-node/https';
 
 async function runTests(report: (result: StepResult) => void) {
   const start = Date.now();
@@ -52,6 +53,15 @@ function App(): React.JSX.Element {
   const [memorySamples, setMemorySamples] = useState<MemorySample[]>([]);
   const [memoryRounds, setMemoryRounds] = useState(0);
   const [memoryReport, setMemoryReport] = useState<MemoryReport | null>(null);
+
+  useEffect(() => {
+    https.get('https://www.google.com', response => {
+      console.log(response.statusCode);
+      response.on('data', d => {
+        console.log(d.toString('utf8'));
+      });
+    });
+  }, []);
 
   const run = useCallback(() => {
     if (runningRef.current) {
@@ -143,10 +153,9 @@ function App(): React.JSX.Element {
             <Text
               style={[
                 styles.status,
-                memoryReport
-                  ? styles[memoryReport.verdict]
-                  : styles.running,
-              ]}>
+                memoryReport ? styles[memoryReport.verdict] : styles.running,
+              ]}
+            >
               {memoryReport ? memoryReport.verdict.toUpperCase() : 'RUNNING'}
             </Text>
             <View style={styles.rowText}>
@@ -172,13 +181,15 @@ function App(): React.JSX.Element {
         <Pressable
           style={[styles.button, running && styles.buttonDisabled]}
           disabled={running}
-          onPress={run}>
+          onPress={run}
+        >
           <Text style={styles.buttonText}>Run tests</Text>
         </Pressable>
         <Pressable
           style={[styles.button, running && styles.buttonDisabled]}
           disabled={running}
-          onPress={runMemory}>
+          onPress={runMemory}
+        >
           <Text style={styles.buttonText}>Run memory test</Text>
         </Pressable>
       </View>

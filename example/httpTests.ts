@@ -1,5 +1,4 @@
 import * as http from 'react-native-nitro-node/http';
-import * as https from 'react-native-nitro-node/https';
 import * as net from 'react-native-nitro-node/net';
 import { Buffer } from 'buffer';
 import {
@@ -596,8 +595,6 @@ export async function runHttpTests(step: Step) {
       ['an https: URL', 'TypeError', () => http.request('https://example.com/')],
       ["protocol 'ftp:'", 'TypeError', () => http.request({ protocol: 'ftp:', host: HOST })],
       ['not a URL', 'TypeError', () => http.request('not a url')],
-      ['https.request', 'Error', () => https.request(`https://${HOST}/`)],
-      ['https.get', 'Error', () => https.get(`https://${HOST}/`)],
     ];
     for (const [label, name, fn] of checks) {
       expectThrow(label, name, fn);

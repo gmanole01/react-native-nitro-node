@@ -42,6 +42,18 @@
         "default": "./lib/commonjs/dns/index.js"
       }
     },
+    "./events": {
+      "source": "./src/events/index.ts",
+      "react-native": "./src/events/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/events/index.d.ts",
+        "default": "./lib/module/events/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/events/index.d.ts",
+        "default": "./lib/commonjs/events/index.js"
+      }
+    },
     "./fs": {
       "source": "./src/fs/index.ts",
       "react-native": "./src/fs/index.ts",
@@ -126,6 +138,18 @@
         "default": "./lib/commonjs/process/index.js"
       }
     },
+    "./stream": {
+      "source": "./src/stream/index.ts",
+      "react-native": "./src/stream/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/stream/index.d.ts",
+        "default": "./lib/module/stream/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/stream/index.d.ts",
+        "default": "./lib/commonjs/stream/index.js"
+      }
+    },
     "./tls": {
       "source": "./src/tls/index.ts",
       "react-native": "./src/tls/index.ts",
@@ -172,6 +196,7 @@
     "android/fix-prefab.gradle",
     "android/gradle.properties",
     "android/CMakeLists.txt",
+    "android/libs/**",
     "android/src/**",
     "ios/**/*.a",
     "ios/**/*.h",
@@ -207,7 +232,6 @@
   },
   "devDependencies": {
     "@jamesacarr/eslint-formatter-github-actions": "^0.2.0",
-    "@reclaimprotocol/tls": "patch:@reclaimprotocol/tls@https%3A//github.com/reclaimprotocol/tls.git%23commit=c41fb4a02c8ae2da47112c5f25036ea9a2f2b983#~/.yarn/patches/@reclaimprotocol-tls-https-0cd2ccca7e.patch",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@types/events": "^3",
@@ -224,7 +248,6 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@reclaimprotocol/tls": "*",
     "react": "*",
     "react-native": "*",
     "react-native-nitro-modules": "*"
