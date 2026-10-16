@@ -138,6 +138,18 @@
         "default": "./lib/commonjs/process/index.js"
       }
     },
+    "./querystring": {
+      "source": "./src/querystring/index.ts",
+      "react-native": "./src/querystring/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/querystring/index.d.ts",
+        "default": "./lib/module/querystring/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/querystring/index.d.ts",
+        "default": "./lib/commonjs/querystring/index.js"
+      }
+    },
     "./stream": {
       "source": "./src/stream/index.ts",
       "react-native": "./src/stream/index.ts",

@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, running on a real libuv event loop.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `buffer` · `os` · `path` · `process`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `querystring` · `buffer` · `os` · `path` · `process`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -85,6 +85,7 @@ import http from 'react-native-nitro-node/http';
 import https from 'react-native-nitro-node/https';
 import { EventEmitter } from 'react-native-nitro-node/events';
 import { Readable, pipeline } from 'react-native-nitro-node/stream';
+import querystring from 'react-native-nitro-node/querystring';
 import os from 'react-native-nitro-node/os';
 import path from 'react-native-nitro-node/path';
 import process from 'react-native-nitro-node/process';
@@ -239,6 +240,19 @@ net.createServer(async (socket) => {
 }).listen(7000);
 ```
 
+### Query strings
+
+`querystring` is ported from Node's own module, so it encodes exactly like Node:
+
+```ts
+import querystring from 'react-native-nitro-node/querystring';
+
+querystring.stringify({ q: 'nitro node', tags: ['tcp', 'tls'], page: 2 });
+// 'q=nitro%20node&tags=tcp&tags=tls&page=2'
+
+querystring.escape('a&b=c'); // 'a%26b%3Dc'
+```
+
 ### DNS
 
 ```ts
@@ -344,11 +358,13 @@ dns.lookup('nope.invalid', (err) => {
 | `dns.promises` | ❌ | Planned |
 | `resolveMx`, `resolveTxt`, `resolveSrv`, `reverse`, … | ❌ | Planned |
 
-### `events`, `stream`, `buffer`, `os`, `path`, `process`
+### `events`, `stream`, `querystring`, `buffer`, `os`, `path`, `process`
 
 | API | Status | Notes |
 |---|:---:|---|
 | `events.EventEmitter` | ✅ | Re-exports the [`events`](https://www.npmjs.com/package/events) package |
+| `querystring.stringify()` / `encode()` / `escape()` | ✅ | Ported from Node: the same output, the same `ParsedUrlQueryInput` and `StringifyOptions` types |
+| `querystring.parse()` / `decode()` / `unescape()` | ❌ | Planned |
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
 | `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
@@ -417,6 +433,7 @@ Know the limits:
 - [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
 - [ ] `http.Agent` with connection pooling and keep-alive reuse
 - [ ] `dns.promises` and `fs.promises`
+- [ ] `querystring.parse()`
 - [ ] `fs.stat` / `lstat` / `fstat` with `Stats`, and `readdir({ withFileTypes })`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
 
@@ -433,7 +450,7 @@ Know the limits:
 - [x] `http`: client and server
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
-- [x] `events` and `stream` entry points
+- [x] `events`, `stream` and `querystring` entry points
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `fs`: files, file descriptors, directories and `statfs`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` helpers
