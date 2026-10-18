@@ -72,6 +72,14 @@ namespace margelo::nitro::node {
       virtual double getS_IROTH() = 0;
       virtual double getS_IWOTH() = 0;
       virtual double getS_IXOTH() = 0;
+      virtual double getS_IFMT() = 0;
+      virtual double getS_IFREG() = 0;
+      virtual double getS_IFDIR() = 0;
+      virtual double getS_IFCHR() = 0;
+      virtual double getS_IFBLK() = 0;
+      virtual double getS_IFIFO() = 0;
+      virtual double getS_IFLNK() = 0;
+      virtual double getS_IFSOCK() = 0;
       virtual double getF_OK() = 0;
       virtual double getR_OK() = 0;
       virtual double getW_OK() = 0;

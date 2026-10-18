@@ -37,7 +37,7 @@ Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js'
 - 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are backed by libuv `uv_tcp_t` handles, not by a WebSocket or a platform HTTP stack.
 - 🌐 **HTTP client and server:** an `http` module with streaming bodies, chunked encoding, keep-alive and upgrade/CONNECT events.
 - 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, with certificate verification against the system's trust store, SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
-- 📁 **File system:** `fs` with files, file descriptors, directories and `statfs`, in callback and `*Sync` forms. Reads and writes run off the JS thread.
+- 📁 **File system:** `fs` with files, file descriptors, directories, `stat` and `statfs`, in callback and `*Sync` forms. The callback forms run off the JS thread.
 - ⏱️ **Timers that keep running in the background:** `setTimeout`, `setInterval` and `setImmediate` run on the libuv loop, so they go on while React Native's own timers are paused. `process.nextTick` and the other modules use them too.
 - 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` are powered by **[c-ares](https://c-ares.org)**, which Node also uses.
 - 🧵 **Off the JS thread:** all I/O runs on a dedicated libuv loop thread. Results are delivered back to JavaScript as events.
@@ -154,6 +154,10 @@ fs.readFile(`${dir}/notes/today.txt`, 'utf8', (err, text) => {
 });
 
 console.log(fs.readdirSync(`${dir}/notes`)); // ['today.txt']
+
+const stats = fs.statSync(`${dir}/notes/today.txt`);
+console.log(stats.isFile(), stats.size, stats.mtime); // true 18 2026-…
+fs.statSync(`${dir}/missing`, { throwIfNoEntry: false }); // undefined
 
 // File descriptors, with explicit positions
 const fd = fs.openSync(`${dir}/data.bin`, 'w+');
@@ -359,9 +363,10 @@ dns.lookup('nope.invalid', (err) => {
 | `open` / `close` / `read` / `write` / `ftruncate` (+ `Sync`) | ✅ | Every Node string flag (`'r'`, `'w+'`, `'ax'`, …); `position: null` uses the file offset. 64-bit positions on every platform and ABI, so files past 2 GiB work |
 | `mkdir` / `readdir` / `rmdir` / `rm` / `unlink` (+ `Sync`) | ✅ | `mkdir({ recursive })`, `rm({ recursive, force })` |
 | `access` / `exists` / `existsSync` | ✅ | |
+| `stat` / `lstat` / `fstat` (+ `Sync`) | ✅ | `Stats` with every field, the `*Ms` times with their nanoseconds and as `Date`s, and `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `throwIfNoEntry`. `birthtime` is the creation time on iOS; Android doesn't record one, so it's `ctime`, as in Node without `statx` |
+| `stat({ bigint: true })` / `BigIntStats` | ❌ | Planned; throws a `TypeError` for now |
 | `statfs` (+ `Sync`) | ✅ | |
 | `constants` | ✅ | The platform's real values; constants a platform lacks are left out |
-| `stat` / `lstat` / `fstat` | ❌ | Planned |
 | `readdir({ withFileTypes })` / `Dirent` | ❌ | Planned |
 | `fs.promises` | ❌ | Planned |
 | `createReadStream` / `createWriteStream` | ❌ | Planned |
@@ -490,7 +495,7 @@ flowchart TB
 - **Nitro Modules** generate the C++ ↔ JS bindings, so every call goes straight through JSI with no serialization over a bridge.
 - **c-ares** performs DNS resolution asynchronously. On Android it's initialized with the system's DNS servers from `ConnectivityManager`.
 - **Timers** are `uv_timer_t` handles on the loop thread, and immediates a `uv_check_t` that runs after each I/O phase, as in Node. JavaScript keeps the timers' callbacks and asks the loop to wake it.
-- **fs** calls go straight to POSIX. The short ones run on the JS thread, inside a `setImmediate` (the library's own) for the callback forms; reads and writes run on Nitro's thread pool.
+- **fs** calls go straight to POSIX. Every call has two native versions: the `*Sync` forms run on the JS thread, and the callback forms run on Nitro's thread pool, so they never block JavaScript.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
 
@@ -521,7 +526,8 @@ Know the limits:
 - [ ] `dns.promises` and `fs.promises`
 - [ ] `querystring.parse()`
 - [ ] `timers/promises`
-- [ ] `fs.stat` / `lstat` / `fstat` with `Stats`, and `readdir({ withFileTypes })`
+- [ ] `readdir({ withFileTypes })` with `Dirent`
+- [ ] `fs.watch` and `fs.watchFile`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
 
 ### Later
@@ -540,7 +546,7 @@ Know the limits:
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
-- [x] `fs`: files, file descriptors, directories and `statfs`
+- [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 

@@ -15,12 +15,15 @@
 
 // Forward declaration of `StatFs` to properly resolve imports.
 namespace margelo::nitro::node { struct StatFs; }
+// Forward declaration of `FileStats` to properly resolve imports.
+namespace margelo::nitro::node { struct FileStats; }
 
+#include <NitroModules/Promise.hpp>
 #include <string>
 #include <NitroModules/ArrayBuffer.hpp>
-#include <NitroModules/Promise.hpp>
 #include <vector>
 #include "StatFs.hpp"
+#include "FileStats.hpp"
 
 namespace margelo::nitro::node {
 
@@ -53,9 +56,12 @@ namespace margelo::nitro::node {
 
     public:
       // Methods
-      virtual double open(const std::string& path, double flags, double mode) = 0;
-      virtual double close(double fd) = 0;
-      virtual double ftruncate(double fd, double length) = 0;
+      virtual std::shared_ptr<Promise<double>> open(const std::string& path, double flags, double mode) = 0;
+      virtual double openSync(const std::string& path, double flags, double mode) = 0;
+      virtual std::shared_ptr<Promise<double>> close(double fd) = 0;
+      virtual double closeSync(double fd) = 0;
+      virtual std::shared_ptr<Promise<double>> ftruncate(double fd, double length) = 0;
+      virtual double ftruncateSync(double fd, double length) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> read(double fd, double length, double position) = 0;
       virtual double readSync(double fd, const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length, double position) = 0;
       virtual std::shared_ptr<Promise<double>> write(double fd, const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length, double position) = 0;
@@ -64,14 +70,28 @@ namespace margelo::nitro::node {
       virtual std::shared_ptr<ArrayBuffer> readFileSync(const std::string& path) = 0;
       virtual std::shared_ptr<Promise<void>> writeFile(const std::string& path, const std::shared_ptr<ArrayBuffer>& data, double offset, double length, double flags, double mode) = 0;
       virtual double writeFileSync(const std::string& path, const std::shared_ptr<ArrayBuffer>& data, double offset, double length, double flags, double mode) = 0;
-      virtual double mkdir(const std::string& path, double mode) = 0;
-      virtual double mkdirRecursive(const std::string& path, double mode) = 0;
-      virtual double unlink(const std::string& path) = 0;
-      virtual double rmdir(const std::string& path) = 0;
-      virtual double rmRecursive(const std::string& path) = 0;
-      virtual double access(const std::string& path, double mode) = 0;
-      virtual std::vector<std::string> readdir(const std::string& path) = 0;
-      virtual StatFs statfs(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<double>> mkdir(const std::string& path, double mode) = 0;
+      virtual double mkdirSync(const std::string& path, double mode) = 0;
+      virtual std::shared_ptr<Promise<double>> mkdirRecursive(const std::string& path, double mode) = 0;
+      virtual double mkdirRecursiveSync(const std::string& path, double mode) = 0;
+      virtual std::shared_ptr<Promise<double>> unlink(const std::string& path) = 0;
+      virtual double unlinkSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<double>> rmdir(const std::string& path) = 0;
+      virtual double rmdirSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<double>> rmRecursive(const std::string& path) = 0;
+      virtual double rmRecursiveSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<double>> access(const std::string& path, double mode) = 0;
+      virtual double accessSync(const std::string& path, double mode) = 0;
+      virtual std::shared_ptr<Promise<std::vector<std::string>>> readdir(const std::string& path) = 0;
+      virtual std::vector<std::string> readdirSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<StatFs>> statfs(const std::string& path) = 0;
+      virtual StatFs statfsSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<FileStats>> stat(const std::string& path) = 0;
+      virtual FileStats statSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<FileStats>> lstat(const std::string& path) = 0;
+      virtual FileStats lstatSync(const std::string& path) = 0;
+      virtual std::shared_ptr<Promise<FileStats>> fstat(double fd) = 0;
+      virtual FileStats fstatSync(double fd) = 0;
 
     protected:
       // Hybrid Setup

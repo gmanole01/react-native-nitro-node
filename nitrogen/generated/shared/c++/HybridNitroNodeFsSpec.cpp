@@ -15,8 +15,11 @@ namespace margelo::nitro::node {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("open", &HybridNitroNodeFsSpec::open);
+      prototype.registerHybridMethod("openSync", &HybridNitroNodeFsSpec::openSync);
       prototype.registerHybridMethod("close", &HybridNitroNodeFsSpec::close);
+      prototype.registerHybridMethod("closeSync", &HybridNitroNodeFsSpec::closeSync);
       prototype.registerHybridMethod("ftruncate", &HybridNitroNodeFsSpec::ftruncate);
+      prototype.registerHybridMethod("ftruncateSync", &HybridNitroNodeFsSpec::ftruncateSync);
       prototype.registerHybridMethod("read", &HybridNitroNodeFsSpec::read);
       prototype.registerHybridMethod("readSync", &HybridNitroNodeFsSpec::readSync);
       prototype.registerHybridMethod("write", &HybridNitroNodeFsSpec::write);
@@ -26,13 +29,27 @@ namespace margelo::nitro::node {
       prototype.registerHybridMethod("writeFile", &HybridNitroNodeFsSpec::writeFile);
       prototype.registerHybridMethod("writeFileSync", &HybridNitroNodeFsSpec::writeFileSync);
       prototype.registerHybridMethod("mkdir", &HybridNitroNodeFsSpec::mkdir);
+      prototype.registerHybridMethod("mkdirSync", &HybridNitroNodeFsSpec::mkdirSync);
       prototype.registerHybridMethod("mkdirRecursive", &HybridNitroNodeFsSpec::mkdirRecursive);
+      prototype.registerHybridMethod("mkdirRecursiveSync", &HybridNitroNodeFsSpec::mkdirRecursiveSync);
       prototype.registerHybridMethod("unlink", &HybridNitroNodeFsSpec::unlink);
+      prototype.registerHybridMethod("unlinkSync", &HybridNitroNodeFsSpec::unlinkSync);
       prototype.registerHybridMethod("rmdir", &HybridNitroNodeFsSpec::rmdir);
+      prototype.registerHybridMethod("rmdirSync", &HybridNitroNodeFsSpec::rmdirSync);
       prototype.registerHybridMethod("rmRecursive", &HybridNitroNodeFsSpec::rmRecursive);
+      prototype.registerHybridMethod("rmRecursiveSync", &HybridNitroNodeFsSpec::rmRecursiveSync);
       prototype.registerHybridMethod("access", &HybridNitroNodeFsSpec::access);
+      prototype.registerHybridMethod("accessSync", &HybridNitroNodeFsSpec::accessSync);
       prototype.registerHybridMethod("readdir", &HybridNitroNodeFsSpec::readdir);
+      prototype.registerHybridMethod("readdirSync", &HybridNitroNodeFsSpec::readdirSync);
       prototype.registerHybridMethod("statfs", &HybridNitroNodeFsSpec::statfs);
+      prototype.registerHybridMethod("statfsSync", &HybridNitroNodeFsSpec::statfsSync);
+      prototype.registerHybridMethod("stat", &HybridNitroNodeFsSpec::stat);
+      prototype.registerHybridMethod("statSync", &HybridNitroNodeFsSpec::statSync);
+      prototype.registerHybridMethod("lstat", &HybridNitroNodeFsSpec::lstat);
+      prototype.registerHybridMethod("lstatSync", &HybridNitroNodeFsSpec::lstatSync);
+      prototype.registerHybridMethod("fstat", &HybridNitroNodeFsSpec::fstat);
+      prototype.registerHybridMethod("fstatSync", &HybridNitroNodeFsSpec::fstatSync);
     });
   }
 

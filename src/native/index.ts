@@ -12,6 +12,7 @@ import type {
   NitroNodeTlsSocket,
   NitroNodeUv,
   SockAddr,
+  FileStats,
   StatFs,
   TlsClientOptions,
 } from './specs/node.nitro';
@@ -43,6 +44,7 @@ export type {
   NitroNodeNetServer,
   NitroNodeTlsSocket,
   SockAddr,
+  FileStats,
   StatFs,
   TlsClientOptions,
 };

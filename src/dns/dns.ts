@@ -4,6 +4,7 @@ import { setTimeout, clearTimeout } from '../timers';
 import type { Timeout } from '../timers';
 import { isIP } from '../ip';
 import { dnsError } from '../errors';
+import { rethrowLater } from '../utils';
 import type { DnsException } from '../types';
 
 export type { DnsException };
@@ -164,11 +165,13 @@ function nativeResolve(
     }, timeout);
   }
 
-  NitroDns[query](hostname)
-    .then((addresses) => settle(null, addresses))
-    .catch((reason: unknown) =>
-      settle(dnsError(nativeErrorCode(reason), syscall, hostname), []),
-    );
+  NitroDns[query](hostname).then(
+    (addresses) => rethrowLater(() => settle(null, addresses)),
+    (reason: unknown) =>
+      rethrowLater(() =>
+        settle(dnsError(nativeErrorCode(reason), syscall, hostname), []),
+      ),
+  );
 }
 
 /** Resolves the IPv4 addresses (A records) of `hostname`. */

@@ -1,8 +1,9 @@
 import { Buffer } from 'buffer';
 import { NitroFs, NitroFsConstants } from '../native';
-import type { StatFs } from '../native';
+import type { FileStats, StatFs } from '../native';
 import { fsError } from '../errors';
 import { setImmediate } from '../timers';
+import { rethrowLater } from '../utils';
 import type { BufferEncoding, ErrnoException } from '../types';
 
 export type { StatFs };
@@ -41,6 +42,15 @@ export interface Constants {
   S_IROTH: number;
   S_IWOTH: number;
   S_IXOTH: number;
+  /** The file type bits of a mode, see Stats. */
+  S_IFMT: number;
+  S_IFREG: number;
+  S_IFDIR: number;
+  S_IFCHR: number;
+  S_IFBLK: number;
+  S_IFIFO: number;
+  S_IFLNK: number;
+  S_IFSOCK: number;
   F_OK: number;
   R_OK: number;
   W_OK: number;
@@ -76,6 +86,14 @@ const CONSTANT_NAMES: (keyof Constants)[] = [
   'S_IROTH',
   'S_IWOTH',
   'S_IXOTH',
+  'S_IFMT',
+  'S_IFREG',
+  'S_IFDIR',
+  'S_IFCHR',
+  'S_IFBLK',
+  'S_IFIFO',
+  'S_IFLNK',
+  'S_IFSOCK',
   'F_OK',
   'R_OK',
   'W_OK',
@@ -128,7 +146,9 @@ function fileURLToPath(href: string): string {
     throw new TypeError(`File URL host must be "localhost" or empty: ${href}`);
   }
   if (/%2f/i.test(pathname!)) {
-    throw new TypeError(`File URL path must not include encoded / characters: ${href}`);
+    throw new TypeError(
+      `File URL path must not include encoded / characters: ${href}`,
+    );
   }
   return decodeURIComponent(pathname!);
 }
@@ -150,8 +170,16 @@ function toFlags(flags: OpenMode | undefined, defaultFlags: string): number {
   if (typeof flags === 'number') {
     return flags;
   }
-  const { O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_SYNC } =
-    constants;
+  const {
+    O_RDONLY,
+    O_WRONLY,
+    O_RDWR,
+    O_CREAT,
+    O_EXCL,
+    O_TRUNC,
+    O_APPEND,
+    O_SYNC,
+  } = constants;
   switch (flags ?? defaultFlags) {
     case 'r':
       return O_RDONLY;
@@ -193,7 +221,10 @@ function toFlags(flags: OpenMode | undefined, defaultFlags: string): number {
   throw new TypeError(`Invalid flags: ${String(flags)}`);
 }
 
-function toMode(mode: number | string | undefined, defaultMode: number): number {
+function toMode(
+  mode: number | string | undefined,
+  defaultMode: number,
+): number {
   if (mode === undefined) {
     return defaultMode;
   }
@@ -240,39 +271,104 @@ function requireCallback(callback: unknown): void {
 }
 
 /**
- * Calls `callback` with the result of `fn` or its error, after the current
- * task: Node's fs callbacks never run synchronously.
+ * Runs `onValue` or `onError` with what a native call's promise settles to,
+ * exactly one of them, once. They run outside the promise chain: an exception
+ * one throws (from the user's callback) is rethrown on its own, so it is
+ * reported like any uncaught error, as in Node, rather than as an unhandled
+ * rejection or by calling the callback again with it.
  */
-function later<T>(callback: ResultCallback<T>, fn: () => T): void {
-  setImmediate(() => {
-    let result: T;
-    try {
-      result = fn();
-    } catch (e) {
-      callback(e as ErrnoException, undefined as T);
-      return;
-    }
-    callback(null, result);
-  });
+function settleWith<T>(
+  promise: Promise<T>,
+  onValue: (value: T) => void,
+  onError: (error: unknown) => void,
+): void {
+  promise.then(
+    (value) => rethrowLater(() => onValue(value)),
+    (error: unknown) => rethrowLater(() => onError(error)),
+  );
 }
 
-function bytesOf(data: string | BinaryData, encoding?: BufferEncoding | null): BinaryData {
-  return typeof data === 'string' ? Buffer.from(data, encoding ?? 'utf8') : data;
+/**
+ * settleWith() for an `(err, result)` callback: the result made by `onValue`,
+ * or the error as an fs error.
+ */
+function settle<T, R>(
+  promise: Promise<T>,
+  callback: ResultCallback<R>,
+  onValue: (value: T) => R,
+  syscall: string,
+  path?: string,
+): void {
+  settleWith(
+    promise,
+    (value) => callback(null, onValue(value)),
+    (e) =>
+      callback(toFsError(e, syscall, path) as ErrnoException, undefined as R),
+  );
 }
 
-function decode(buffer: Buffer, encoding: BufferEncoding | null | undefined): Buffer | string {
+/**
+ * settleWith() for a native call that resolves with a status, the number its
+ * *Sync twin returns: the callback gets the error of a negative one, or the
+ * result `onSuccess` makes of it.
+ */
+function settleStatus<R>(
+  promise: Promise<number>,
+  callback: ResultCallback<R>,
+  syscall: string,
+  path: string | undefined,
+  onSuccess: (status: number) => R,
+): void {
+  settleWith(
+    promise,
+    (status) =>
+      status < 0
+        ? callback(fsError(syscall, status, path), undefined as R)
+        : callback(null, onSuccess(status)),
+    (e) =>
+      callback(toFsError(e, syscall, path) as ErrnoException, undefined as R),
+  );
+}
+
+const nothing = (): void => undefined;
+
+function bytesOf(
+  data: string | BinaryData,
+  encoding?: BufferEncoding | null,
+): BinaryData {
+  return typeof data === 'string'
+    ? Buffer.from(data, encoding ?? 'utf8')
+    : data;
+}
+
+function decode(
+  buffer: Buffer,
+  encoding: BufferEncoding | null | undefined,
+): Buffer | string {
   return encoding ? buffer.toString(encoding) : buffer;
 }
 
 // --- open / close -----------------------------------------------------------
 
-export function openSync(path: PathLike, flags?: OpenMode, mode?: number | string): number {
+export function openSync(
+  path: PathLike,
+  flags?: OpenMode,
+  mode?: number | string,
+): number {
   const p = toPath(path);
-  return check(NitroFs.open(p, toFlags(flags, 'r'), toMode(mode, 0o666)), 'open', p);
+  return check(
+    NitroFs.openSync(p, toFlags(flags, 'r'), toMode(mode, 0o666)),
+    'open',
+    p,
+  );
 }
 
 export function open(path: PathLike, callback: ResultCallback<number>): void;
-export function open(path: PathLike, flags: OpenMode | undefined, callback: ResultCallback<number>): void;
+export function open(
+  path: PathLike,
+  flags: OpenMode | undefined,
+  callback: ResultCallback<number>,
+): void;
 export function open(
   path: PathLike,
   flags: OpenMode | undefined,
@@ -282,31 +378,61 @@ export function open(
 export function open(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as ResultCallback<number>;
   requireCallback(callback);
-  const [flags, mode] = args as [OpenMode | undefined, number | string | undefined];
-  later(callback, () => openSync(path, flags, mode ?? undefined));
+  const [flags, mode] = args as [
+    OpenMode | undefined,
+    number | string | null | undefined,
+  ];
+  const p = toPath(path);
+  settleStatus(
+    NitroFs.open(p, toFlags(flags, 'r'), toMode(mode ?? undefined, 0o666)),
+    callback,
+    'open',
+    p,
+    (fd) => fd,
+  );
 }
 
 export function closeSync(fd: number): void {
-  check(NitroFs.close(fd), 'close');
+  check(NitroFs.closeSync(fd), 'close');
 }
 
 export function close(fd: number, callback?: Callback): void {
-  later<void>(callback ?? (() => {}), () => closeSync(fd));
+  settleStatus(
+    NitroFs.close(fd),
+    callback ?? nothing,
+    'close',
+    undefined,
+    nothing,
+  );
 }
 
 export function ftruncateSync(fd: number, len: number = 0): void {
-  check(NitroFs.ftruncate(fd, len), 'ftruncate');
+  check(NitroFs.ftruncateSync(fd, len), 'ftruncate');
 }
 
 export function ftruncate(fd: number, callback: Callback): void;
-export function ftruncate(fd: number, len: number | undefined, callback: Callback): void;
-export function ftruncate(fd: number, len: number | Callback | undefined, callback?: Callback): void {
+export function ftruncate(
+  fd: number,
+  len: number | undefined,
+  callback: Callback,
+): void;
+export function ftruncate(
+  fd: number,
+  len: number | Callback | undefined,
+  callback?: Callback,
+): void {
   if (typeof len === 'function') {
     callback = len;
     len = 0;
   }
   requireCallback(callback);
-  later<void>(callback!, () => ftruncateSync(fd, len as number | undefined));
+  settleStatus(
+    NitroFs.ftruncate(fd, len ?? 0),
+    callback!,
+    'ftruncate',
+    undefined,
+    nothing,
+  );
 }
 
 // --- read / write -------------------------------------------------------------
@@ -314,7 +440,11 @@ export function ftruncate(fd: number, len: number | Callback | undefined, callba
 /** The most bytes one read or write may ask for, as in Node: 2 GiB - 1. */
 const MAX_IO_LENGTH = 0x7fffffff;
 
-function validateRange(buffer: BinaryData, offset: number, length: number): void {
+function validateRange(
+  buffer: BinaryData,
+  offset: number,
+  length: number,
+): void {
   if (length > MAX_IO_LENGTH) {
     throw new RangeError(`length (${length}) must be at most ${MAX_IO_LENGTH}`);
   }
@@ -359,16 +489,26 @@ export function read<T extends BinaryData>(
 ): void {
   requireCallback(callback);
   validateRange(buffer, offset, length);
-  NitroFs.read(fd, length, toPosition(position))
-    .then((data) => {
+  settleWith(
+    NitroFs.read(fd, length, toPosition(position)),
+    (data) => {
       const bytes = new Uint8Array(data);
-      new Uint8Array(buffer.buffer, buffer.byteOffset + offset, bytes.byteLength).set(bytes);
+      new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset + offset,
+        bytes.byteLength,
+      ).set(bytes);
       callback(null, bytes.byteLength, buffer);
-    })
-    .catch((e: unknown) => callback(toFsError(e, 'read') as ErrnoException, 0, buffer));
+    },
+    (e) => callback(toFsError(e, 'read') as ErrnoException, 0, buffer),
+  );
 }
 
-type WriteCallback<T> = (err: ErrnoException | null, written: number, data: T) => void;
+type WriteCallback<T> = (
+  err: ErrnoException | null,
+  written: number,
+  data: T,
+) => void;
 
 /**
  * Writes `buffer` (or `length` bytes of it from `offset`), or a string, at
@@ -423,7 +563,11 @@ export function writeSync(
   );
 }
 
-export function write<T extends BinaryData>(fd: number, buffer: T, callback: WriteCallback<T>): void;
+export function write<T extends BinaryData>(
+  fd: number,
+  buffer: T,
+  callback: WriteCallback<T>,
+): void;
 export function write<T extends BinaryData>(
   fd: number,
   buffer: T,
@@ -445,7 +589,11 @@ export function write<T extends BinaryData>(
   position: number | null | undefined,
   callback: WriteCallback<T>,
 ): void;
-export function write(fd: number, string: string, callback: WriteCallback<string>): void;
+export function write(
+  fd: number,
+  string: string,
+  callback: WriteCallback<string>,
+): void;
 export function write(
   fd: number,
   string: string,
@@ -459,7 +607,11 @@ export function write(
   encoding: BufferEncoding | null | undefined,
   callback: WriteCallback<string>,
 ): void;
-export function write(fd: number, data: string | BinaryData, ...args: unknown[]): void {
+export function write(
+  fd: number,
+  data: string | BinaryData,
+  ...args: unknown[]
+): void {
   const callback = args.pop() as WriteCallback<string | BinaryData>;
   requireCallback(callback);
 
@@ -468,13 +620,20 @@ export function write(fd: number, data: string | BinaryData, ...args: unknown[])
   let length: number;
   let position: number | null | undefined;
   if (typeof data === 'string') {
-    const [pos, encoding] = args as [number | null | undefined, BufferEncoding | null | undefined];
+    const [pos, encoding] = args as [
+      number | null | undefined,
+      BufferEncoding | null | undefined,
+    ];
     bytes = bytesOf(data, encoding);
     offset = 0;
     length = bytes.byteLength;
     position = pos;
   } else {
-    const [off, len, pos] = args as [number | null | undefined, number | null | undefined, number | null | undefined];
+    const [off, len, pos] = args as [
+      number | null | undefined,
+      number | null | undefined,
+      number | null | undefined,
+    ];
     bytes = data;
     offset = off ?? 0;
     length = len ?? bytes.byteLength - offset;
@@ -482,15 +641,23 @@ export function write(fd: number, data: string | BinaryData, ...args: unknown[])
   }
   validateRange(bytes, offset, length);
 
-  NitroFs.write(fd, bytes.buffer as ArrayBuffer, bytes.byteOffset + offset, length, toPosition(position))
-    .then((status) => {
+  settleWith(
+    NitroFs.write(
+      fd,
+      bytes.buffer as ArrayBuffer,
+      bytes.byteOffset + offset,
+      length,
+      toPosition(position),
+    ),
+    (status) => {
       if (status < 0) {
         callback(fsError('write', status), 0, data);
       } else {
         callback(null, status, data);
       }
-    })
-    .catch((e: unknown) => callback(toFsError(e, 'write') as ErrnoException, 0, data));
+    },
+    (e) => callback(toFsError(e, 'write') as ErrnoException, 0, data),
+  );
 }
 
 /**
@@ -516,7 +683,10 @@ export interface ReadFileOptions {
   encoding?: BufferEncoding | null;
 }
 
-export function readFileSync(path: PathLike, options?: { encoding?: null } | null): Buffer;
+export function readFileSync(
+  path: PathLike,
+  options?: { encoding?: null } | null,
+): Buffer;
 export function readFileSync(
   path: PathLike,
   options: BufferEncoding | { encoding: BufferEncoding },
@@ -540,7 +710,10 @@ export function readFileSync(
   return decode(Buffer.from(data), encoding);
 }
 
-export function readFile(path: PathLike, callback: ResultCallback<Buffer>): void;
+export function readFile(
+  path: PathLike,
+  callback: ResultCallback<Buffer>,
+): void;
 export function readFile(
   path: PathLike,
   options: { encoding?: null } | null | undefined,
@@ -554,13 +727,19 @@ export function readFile(
 export function readFile(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as ResultCallback<Buffer | string>;
   requireCallback(callback);
-  const options = args[0] as BufferEncoding | ReadFileOptions | null | undefined;
+  const options = args[0] as
+    | BufferEncoding
+    | ReadFileOptions
+    | null
+    | undefined;
   const encoding = typeof options === 'string' ? options : options?.encoding;
   const p = toPath(path);
 
-  NitroFs.readFile(p)
-    .then((data) => callback(null, decode(Buffer.from(data), encoding)))
-    .catch((e: unknown) => callback(readFileError(e, p) as ErrnoException, undefined as never));
+  settleWith(
+    NitroFs.readFile(p),
+    (data) => callback(null, decode(Buffer.from(data), encoding)),
+    (e) => callback(readFileError(e, p) as ErrnoException, undefined as never),
+  );
 }
 
 export interface WriteFileOptions {
@@ -577,7 +756,7 @@ function writeFileArgs(
   defaultFlag: string,
 ): { bytes: BinaryData; flags: number; mode: number } {
   const opts: WriteFileOptions =
-    typeof options === 'string' ? { encoding: options } : (options ?? {});
+    typeof options === 'string' ? { encoding: options } : options ?? {};
   return {
     bytes: bytesOf(data, opts.encoding),
     flags: toFlags(opts.flag, defaultFlag),
@@ -593,20 +772,35 @@ export function writeFileSync(
   const p = toPath(path);
   const { bytes, flags, mode } = writeFileArgs(data, options, 'w');
   check(
-    NitroFs.writeFileSync(p, bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength, flags, mode),
+    NitroFs.writeFileSync(
+      p,
+      bytes.buffer as ArrayBuffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+      flags,
+      mode,
+    ),
     'open',
     p,
   );
 }
 
-export function writeFile(path: PathLike, data: string | BinaryData, callback: Callback): void;
+export function writeFile(
+  path: PathLike,
+  data: string | BinaryData,
+  callback: Callback,
+): void;
 export function writeFile(
   path: PathLike,
   data: string | BinaryData,
   options: BufferEncoding | WriteFileOptions | null | undefined,
   callback: Callback,
 ): void;
-export function writeFile(path: PathLike, data: string | BinaryData, ...args: unknown[]): void {
+export function writeFile(
+  path: PathLike,
+  data: string | BinaryData,
+  ...args: unknown[]
+): void {
   writeFileWith('w', path, data, args);
 }
 
@@ -615,22 +809,36 @@ export function appendFileSync(
   data: string | BinaryData,
   options?: BufferEncoding | WriteFileOptions | null,
 ): void {
-  const opts: WriteFileOptions = typeof options === 'string' ? { encoding: options } : (options ?? {});
+  const opts: WriteFileOptions =
+    typeof options === 'string' ? { encoding: options } : options ?? {};
   writeFileSync(path, data, { ...opts, flag: opts.flag ?? 'a' });
 }
 
-export function appendFile(path: PathLike, data: string | BinaryData, callback: Callback): void;
+export function appendFile(
+  path: PathLike,
+  data: string | BinaryData,
+  callback: Callback,
+): void;
 export function appendFile(
   path: PathLike,
   data: string | BinaryData,
   options: BufferEncoding | WriteFileOptions | null | undefined,
   callback: Callback,
 ): void;
-export function appendFile(path: PathLike, data: string | BinaryData, ...args: unknown[]): void {
+export function appendFile(
+  path: PathLike,
+  data: string | BinaryData,
+  ...args: unknown[]
+): void {
   writeFileWith('a', path, data, args);
 }
 
-function writeFileWith(defaultFlag: string, path: PathLike, data: string | BinaryData, args: unknown[]): void {
+function writeFileWith(
+  defaultFlag: string,
+  path: PathLike,
+  data: string | BinaryData,
+  args: unknown[],
+): void {
   const callback = args.pop() as Callback;
   requireCallback(callback);
   const p = toPath(path);
@@ -640,9 +848,18 @@ function writeFileWith(defaultFlag: string, path: PathLike, data: string | Binar
     defaultFlag,
   );
 
-  NitroFs.writeFile(p, bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength, flags, mode)
-    .then(() => callback(null))
-    .catch((e: unknown) => callback(toFsError(e, 'open', p) as ErrnoException));
+  settleWith(
+    NitroFs.writeFile(
+      p,
+      bytes.buffer as ArrayBuffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+      flags,
+      mode,
+    ),
+    () => callback(null),
+    (e) => callback(toFsError(e, 'open', p) as ErrnoException),
+  );
 }
 
 // --- directories and files ------------------------------------------------------
@@ -654,12 +871,32 @@ export interface MakeDirectoryOptions {
   mode?: number | string;
 }
 
-export function mkdirSync(path: PathLike, options?: number | string | MakeDirectoryOptions | null): void {
-  const p = toPath(path);
+function mkdirOptions(
+  options: number | string | MakeDirectoryOptions | null | undefined,
+): {
+  recursive: boolean;
+  mode: number;
+} {
   const opts: MakeDirectoryOptions =
-    typeof options === 'object' && options !== null ? options : { mode: options ?? undefined };
-  const mode = toMode(opts.mode, 0o777);
-  check(opts.recursive ? NitroFs.mkdirRecursive(p, mode) : NitroFs.mkdir(p, mode), 'mkdir', p);
+    typeof options === 'object' && options !== null
+      ? options
+      : { mode: options ?? undefined };
+  return { recursive: opts.recursive === true, mode: toMode(opts.mode, 0o777) };
+}
+
+export function mkdirSync(
+  path: PathLike,
+  options?: number | string | MakeDirectoryOptions | null,
+): void {
+  const p = toPath(path);
+  const { recursive, mode } = mkdirOptions(options);
+  check(
+    recursive
+      ? NitroFs.mkdirRecursiveSync(p, mode)
+      : NitroFs.mkdirSync(p, mode),
+    'mkdir',
+    p,
+  );
 }
 
 export function mkdir(path: PathLike, callback: Callback): void;
@@ -671,7 +908,17 @@ export function mkdir(
 export function mkdir(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as Callback;
   requireCallback(callback);
-  later<void>(callback, () => mkdirSync(path, args[0] as MakeDirectoryOptions | undefined));
+  const p = toPath(path);
+  const { recursive, mode } = mkdirOptions(
+    args[0] as MakeDirectoryOptions | undefined,
+  );
+  settleStatus(
+    recursive ? NitroFs.mkdirRecursive(p, mode) : NitroFs.mkdir(p, mode),
+    callback,
+    'mkdir',
+    p,
+    nothing,
+  );
 }
 
 export interface ReaddirOptions {
@@ -680,16 +927,28 @@ export interface ReaddirOptions {
   withFileTypes?: boolean;
 }
 
-/** The names in a directory, without '.' and '..'. */
-export function readdirSync(path: PathLike, options?: BufferEncoding | ReaddirOptions | null): string[] {
+function checkReaddirOptions(
+  options: BufferEncoding | ReaddirOptions | null | undefined,
+): void {
   if (typeof options === 'object' && options?.withFileTypes) {
     throw new Error('readdir() does not support withFileTypes yet');
   }
-  const p = toPath(path);
-  return call('scandir', p, () => NitroFs.readdir(p));
 }
 
-export function readdir(path: PathLike, callback: ResultCallback<string[]>): void;
+/** The names in a directory, without '.' and '..'. */
+export function readdirSync(
+  path: PathLike,
+  options?: BufferEncoding | ReaddirOptions | null,
+): string[] {
+  checkReaddirOptions(options);
+  const p = toPath(path);
+  return call('scandir', p, () => NitroFs.readdirSync(p));
+}
+
+export function readdir(
+  path: PathLike,
+  callback: ResultCallback<string[]>,
+): void;
 export function readdir(
   path: PathLike,
   options: BufferEncoding | ReaddirOptions | null | undefined,
@@ -698,28 +957,34 @@ export function readdir(
 export function readdir(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as ResultCallback<string[]>;
   requireCallback(callback);
-  later(callback, () => readdirSync(path, args[0] as ReaddirOptions | undefined));
+  checkReaddirOptions(
+    args[0] as BufferEncoding | ReaddirOptions | null | undefined,
+  );
+  const p = toPath(path);
+  settle(NitroFs.readdir(p), callback, (names) => names, 'scandir', p);
 }
 
 export function unlinkSync(path: PathLike): void {
   const p = toPath(path);
-  check(NitroFs.unlink(p), 'unlink', p);
+  check(NitroFs.unlinkSync(p), 'unlink', p);
 }
 
 export function unlink(path: PathLike, callback: Callback): void {
   requireCallback(callback);
-  later<void>(callback, () => unlinkSync(path));
+  const p = toPath(path);
+  settleStatus(NitroFs.unlink(p), callback, 'unlink', p, nothing);
 }
 
 /** Removes an empty directory. */
 export function rmdirSync(path: PathLike): void {
   const p = toPath(path);
-  check(NitroFs.rmdir(p), 'rmdir', p);
+  check(NitroFs.rmdirSync(p), 'rmdir', p);
 }
 
 export function rmdir(path: PathLike, callback: Callback): void {
   requireCallback(callback);
-  later<void>(callback, () => rmdirSync(path));
+  const p = toPath(path);
+  settleStatus(NitroFs.rmdir(p), callback, 'rmdir', p, nothing);
 }
 
 export interface RmOptions {
@@ -729,67 +994,341 @@ export interface RmOptions {
   force?: boolean;
 }
 
+/** The status of an rm: with `force`, a path that doesn't exist is no error. */
+function rmStatus(status: number, options: RmOptions | undefined): number {
+  return status < 0 && options?.force && fsError('rm', status).code === 'ENOENT'
+    ? 0
+    : status;
+}
+
 export function rmSync(path: PathLike, options?: RmOptions): void {
   const p = toPath(path);
-  const status = options?.recursive ? NitroFs.rmRecursive(p) : NitroFs.unlink(p);
-  if (status < 0 && options?.force && fsError('rm', status).code === 'ENOENT') {
-    return;
-  }
-  check(status, 'rm', p);
+  const status = options?.recursive
+    ? NitroFs.rmRecursiveSync(p)
+    : NitroFs.unlinkSync(p);
+  check(rmStatus(status, options), 'rm', p);
 }
 
 export function rm(path: PathLike, callback: Callback): void;
-export function rm(path: PathLike, options: RmOptions | undefined, callback: Callback): void;
+export function rm(
+  path: PathLike,
+  options: RmOptions | undefined,
+  callback: Callback,
+): void;
 export function rm(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as Callback;
   requireCallback(callback);
-  later<void>(callback, () => rmSync(path, args[0] as RmOptions | undefined));
+  const options = args[0] as RmOptions | undefined;
+  const p = toPath(path);
+  const removed = options?.recursive
+    ? NitroFs.rmRecursive(p)
+    : NitroFs.unlink(p);
+  settleStatus(
+    removed.then((status) => rmStatus(status, options)),
+    callback,
+    'rm',
+    p,
+    nothing,
+  );
 }
 
 // --- access and info --------------------------------------------------------------
 
 /** Throws unless the file is accessible with `mode` (F_OK, the default, R_OK, ...). */
-export function accessSync(path: PathLike, mode: number = constants.F_OK): void {
+export function accessSync(
+  path: PathLike,
+  mode: number = constants.F_OK,
+): void {
   const p = toPath(path);
-  check(NitroFs.access(p, mode), 'access', p);
+  check(NitroFs.accessSync(p, mode), 'access', p);
 }
 
 export function access(path: PathLike, callback: Callback): void;
-export function access(path: PathLike, mode: number | undefined, callback: Callback): void;
-export function access(path: PathLike, mode: number | Callback | undefined, callback?: Callback): void {
+export function access(
+  path: PathLike,
+  mode: number | undefined,
+  callback: Callback,
+): void;
+export function access(
+  path: PathLike,
+  mode: number | Callback | undefined,
+  callback?: Callback,
+): void {
   if (typeof mode === 'function') {
     callback = mode;
     mode = undefined;
   }
   requireCallback(callback);
-  later<void>(callback!, () => accessSync(path, mode as number | undefined));
+  const p = toPath(path);
+  settleStatus(
+    NitroFs.access(p, (mode as number | undefined) ?? constants.F_OK),
+    callback!,
+    'access',
+    p,
+    nothing,
+  );
 }
 
 /** Whether the path exists. Never throws. */
 export function existsSync(path: PathLike): boolean {
   try {
-    return NitroFs.access(toPath(path), constants.F_OK) === 0;
+    return NitroFs.accessSync(toPath(path), constants.F_OK) === 0;
   } catch {
     return false;
   }
 }
 
 /** Deprecated in Node, kept for compatibility: the callback gets no error. */
-export function exists(path: PathLike, callback: (exists: boolean) => void): void {
+export function exists(
+  path: PathLike,
+  callback: (exists: boolean) => void,
+): void {
   requireCallback(callback);
-  setImmediate(() => callback(existsSync(path)));
+  let p: string;
+  try {
+    p = toPath(path);
+  } catch {
+    setImmediate(() => callback(false));
+    return;
+  }
+  settleWith(
+    NitroFs.access(p, constants.F_OK),
+    (status) => callback(status === 0),
+    () => callback(false),
+  );
 }
 
 /** Information about the file system that holds `path`. */
 export function statfsSync(path: PathLike): StatFs {
   const p = toPath(path);
-  return call('statfs', p, () => NitroFs.statfs(p));
+  return call('statfs', p, () => NitroFs.statfsSync(p));
 }
 
 export function statfs(path: PathLike, callback: ResultCallback<StatFs>): void;
-export function statfs(path: PathLike, options: object | undefined, callback: ResultCallback<StatFs>): void;
+export function statfs(
+  path: PathLike,
+  options: object | undefined,
+  callback: ResultCallback<StatFs>,
+): void;
 export function statfs(path: PathLike, ...args: unknown[]): void {
   const callback = args.pop() as ResultCallback<StatFs>;
   requireCallback(callback);
-  later(callback, () => statfsSync(path));
+  const p = toPath(path);
+  settle(NitroFs.statfs(p), callback, (info) => info, 'statfs', p);
+}
+
+// Rounded, as in Node: a Date can't hold the fraction, and truncating would
+// put it up to a millisecond early.
+function dateFromMs(ms: number): Date {
+  return new Date(Math.round(ms));
+}
+
+/**
+ * Information about a file, as Node's fs.Stats: what stat(), lstat() and
+ * fstat() return. Times are in milliseconds since the epoch (`*Ms`, with the
+ * nanoseconds as a fraction) and as Dates.
+ */
+export class Stats {
+  dev: number;
+  ino: number;
+  mode: number;
+  nlink: number;
+  uid: number;
+  gid: number;
+  rdev: number;
+  size: number;
+  blksize: number;
+  blocks: number;
+  atimeMs: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  /** The creation time on iOS. Android doesn't record one: the change time, as Node without statx. */
+  birthtimeMs: number;
+  atime: Date;
+  mtime: Date;
+  ctime: Date;
+  birthtime: Date;
+
+  /** @internal Use stat(), lstat() or fstat(). */
+  constructor(stats: FileStats) {
+    this.dev = stats.dev;
+    this.ino = stats.ino;
+    this.mode = stats.mode;
+    this.nlink = stats.nlink;
+    this.uid = stats.uid;
+    this.gid = stats.gid;
+    this.rdev = stats.rdev;
+    this.size = stats.size;
+    this.blksize = stats.blksize;
+    this.blocks = stats.blocks;
+    this.atimeMs = stats.atimeMs;
+    this.mtimeMs = stats.mtimeMs;
+    this.ctimeMs = stats.ctimeMs;
+    this.birthtimeMs = stats.birthtimeMs;
+    this.atime = dateFromMs(stats.atimeMs);
+    this.mtime = dateFromMs(stats.mtimeMs);
+    this.ctime = dateFromMs(stats.ctimeMs);
+    this.birthtime = dateFromMs(stats.birthtimeMs);
+  }
+
+  isFile(): boolean {
+    return this._isType(constants.S_IFREG);
+  }
+
+  isDirectory(): boolean {
+    return this._isType(constants.S_IFDIR);
+  }
+
+  /** Only from lstat(): stat() and fstat() follow links. */
+  isSymbolicLink(): boolean {
+    return this._isType(constants.S_IFLNK);
+  }
+
+  isBlockDevice(): boolean {
+    return this._isType(constants.S_IFBLK);
+  }
+
+  isCharacterDevice(): boolean {
+    return this._isType(constants.S_IFCHR);
+  }
+
+  isFIFO(): boolean {
+    return this._isType(constants.S_IFIFO);
+  }
+
+  isSocket(): boolean {
+    return this._isType(constants.S_IFSOCK);
+  }
+
+  private _isType(type: number): boolean {
+    return (this.mode & constants.S_IFMT) === type;
+  }
+}
+
+export interface StatOptions {
+  /** Not supported: BigIntStats are planned. */
+  bigint?: false;
+}
+
+export interface StatSyncOptions extends StatOptions {
+  /** With false, a path that doesn't exist gives undefined instead of an error. Defaults to true. */
+  throwIfNoEntry?: boolean;
+}
+
+function checkStatOptions(options: StatOptions | null | undefined): void {
+  if (options?.bigint) {
+    throw new TypeError('bigint stats are not supported yet');
+  }
+}
+
+/** Runs a native stat call, as statSync() and lstatSync() do. */
+function statPath(
+  syscall: 'stat' | 'lstat',
+  path: PathLike,
+  options: StatSyncOptions | null | undefined,
+): Stats | undefined {
+  checkStatOptions(options);
+  const p = toPath(path);
+  try {
+    return new Stats(
+      syscall === 'stat' ? NitroFs.statSync(p) : NitroFs.lstatSync(p),
+    );
+  } catch (e) {
+    const err = toFsError(e, syscall, p) as ErrnoException;
+    // As in Node, only a missing entry is let through.
+    if (
+      options?.throwIfNoEntry === false &&
+      (err.code === 'ENOENT' || err.code === 'ENOTDIR')
+    ) {
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+/** Information about the file at `path`, following symbolic links. */
+export function statSync(
+  path: PathLike,
+  options?: StatSyncOptions & { throwIfNoEntry?: true },
+): Stats;
+export function statSync(
+  path: PathLike,
+  options: StatSyncOptions & { throwIfNoEntry: false },
+): Stats | undefined;
+export function statSync(
+  path: PathLike,
+  options?: StatSyncOptions | null,
+): Stats | undefined;
+export function statSync(
+  path: PathLike,
+  options?: StatSyncOptions | null,
+): Stats | undefined {
+  return statPath('stat', path, options);
+}
+
+export function stat(path: PathLike, callback: ResultCallback<Stats>): void;
+export function stat(
+  path: PathLike,
+  options: StatOptions | undefined,
+  callback: ResultCallback<Stats>,
+): void;
+export function stat(path: PathLike, ...args: unknown[]): void {
+  const callback = args.pop() as ResultCallback<Stats>;
+  requireCallback(callback);
+  checkStatOptions(args[0] as StatOptions | undefined);
+  const p = toPath(path);
+  settle(NitroFs.stat(p), callback, (stats) => new Stats(stats), 'stat', p);
+}
+
+/** statSync(), but about a symbolic link itself rather than what it points to. */
+export function lstatSync(
+  path: PathLike,
+  options?: StatSyncOptions & { throwIfNoEntry?: true },
+): Stats;
+export function lstatSync(
+  path: PathLike,
+  options: StatSyncOptions & { throwIfNoEntry: false },
+): Stats | undefined;
+export function lstatSync(
+  path: PathLike,
+  options?: StatSyncOptions | null,
+): Stats | undefined;
+export function lstatSync(
+  path: PathLike,
+  options?: StatSyncOptions | null,
+): Stats | undefined {
+  return statPath('lstat', path, options);
+}
+
+export function lstat(path: PathLike, callback: ResultCallback<Stats>): void;
+export function lstat(
+  path: PathLike,
+  options: StatOptions | undefined,
+  callback: ResultCallback<Stats>,
+): void;
+export function lstat(path: PathLike, ...args: unknown[]): void {
+  const callback = args.pop() as ResultCallback<Stats>;
+  requireCallback(callback);
+  checkStatOptions(args[0] as StatOptions | undefined);
+  const p = toPath(path);
+  settle(NitroFs.lstat(p), callback, (stats) => new Stats(stats), 'lstat', p);
+}
+
+/** Information about an open file. */
+export function fstatSync(fd: number, options?: StatOptions): Stats {
+  checkStatOptions(options);
+  return new Stats(call('fstat', undefined, () => NitroFs.fstatSync(fd)));
+}
+
+export function fstat(fd: number, callback: ResultCallback<Stats>): void;
+export function fstat(
+  fd: number,
+  options: StatOptions | undefined,
+  callback: ResultCallback<Stats>,
+): void;
+export function fstat(fd: number, ...args: unknown[]): void {
+  const callback = args.pop() as ResultCallback<Stats>;
+  requireCallback(callback);
+  checkStatOptions(args[0] as StatOptions | undefined);
+  settle(NitroFs.fstat(fd), callback, (stats) => new Stats(stats), 'fstat');
 }

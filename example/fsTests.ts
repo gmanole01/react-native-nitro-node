@@ -202,6 +202,64 @@ export async function runFsTests(step: Step) {
     return `${((info.bavail * info.bsize) / GiB).toFixed(1)} GiB free`;
   });
 
+  await step('fs stat, lstat and fstat', async () => {
+    const before = Date.now();
+    fs.writeFileSync(file, 'hello stat');
+    const s = fs.statSync(file);
+    if (!(s instanceof fs.Stats) || !s.isFile() || s.isDirectory() || s.isSymbolicLink()) {
+      throw new Error(`not a plain file: mode ${s.mode.toString(8)}`);
+    }
+    expectEqual('size', s.size, 10);
+    expectEqual('nlink', s.nlink, 1);
+    if (!(s.ino > 0 && s.blksize > 0 && s.mode & fs.constants.S_IRUSR)) {
+      throw new Error(`implausible stats: ${JSON.stringify(s)}`);
+    }
+    // the file system may round the time down to a second or so
+    if (!(s.mtimeMs > before - 2000 && s.mtimeMs < Date.now() + 2000)) {
+      throw new Error(`mtime ${s.mtime.toISOString()} is not now`);
+    }
+    expectEqual('mtime Date', s.mtime.getTime(), Math.round(s.mtimeMs));
+    if (!(s.birthtimeMs > 0 && s.birthtimeMs <= s.mtimeMs + 1)) {
+      throw new Error(`birthtime ${s.birthtimeMs} after mtime ${s.mtimeMs}`);
+    }
+    if (!fs.statSync(root).isDirectory()) {
+      throw new Error('the test directory is not a directory');
+    }
+
+    const fd = fs.openSync(file, 'r');
+    try {
+      expectEqual('fstatSync ino', fs.fstatSync(fd).ino, s.ino);
+      const [viaFd] = await call<[fs.Stats]>(cb => fs.fstat(fd, cb));
+      expectEqual('fstat size', viaFd.size, 10);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const [viaCallback] = await call<[fs.Stats]>(cb => fs.stat(file, cb));
+    expectEqual('stat ino', viaCallback.ino, s.ino);
+
+    const missing = `${root}/missing`;
+    const err = expectCode('statSync(missing)', 'ENOENT', () => fs.statSync(missing));
+    expectEqual('error syscall', err.syscall, 'stat');
+    expectEqual('error message', err.message, `ENOENT: no such file or directory, stat '${missing}'`);
+    await expectCodeAsync('lstat(missing)', 'ENOENT', call(cb => fs.lstat(missing, cb)));
+    expectEqual('throwIfNoEntry: false', fs.statSync(missing, { throwIfNoEntry: false }), undefined);
+    expectCode('fstatSync(-1)', 'EBADF', () => fs.fstatSync(-1));
+
+    // fs can't make symbolic links yet; the system has a few
+    const link = ['/var', '/etc', '/sdcard', '/tmp'].find(p => {
+      try {
+        return fs.lstatSync(p).isSymbolicLink();
+      } catch {
+        return false;
+      }
+    });
+    if (link !== undefined && fs.statSync(link).isSymbolicLink()) {
+      throw new Error(`statSync(${link}) did not follow the link`);
+    }
+    return `${s.size} bytes, mode ${(s.mode & 0o7777).toString(8)}, ` +
+      (link ? `lstat sees ${link} as a link` : 'no system link to lstat');
+  });
+
   await step('fs files past 2 GiB and 4 GiB', async () => {
     // a sparse file: writing at 5 GiB takes no real space on APFS, ext4 or f2fs
     const huge = `${root}/huge.bin`;
@@ -221,6 +279,7 @@ export async function runFsTests(step: Step) {
       expectEqual('content at 5 GiB', back.toString(), 'far away');
       const [, asyncBack] = await call<[number, Buffer]>(cb => fs.read(fd, Buffer.alloc(8), 0, 8, at5G, cb));
       expectEqual('async read at 5 GiB', asyncBack.toString(), 'far away');
+      expectEqual('fstatSync size past 4 GiB', fs.fstatSync(fd).size, at5G + 8);
 
       await call(cb => fs.ftruncate(fd, 6 * GiB, cb));
       const err = expectCode('readFileSync(6 GiB)', 'ERR_FS_FILE_TOO_LARGE', () => fs.readFileSync(huge));

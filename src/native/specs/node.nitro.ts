@@ -16,6 +16,28 @@ export interface StatFs {
   ffree: number;
 }
 
+/**
+ * What stat(2) reports about a file, as Node's fs.Stats. Times are in
+ * milliseconds since the epoch, with the nanoseconds as a fraction.
+ */
+export interface FileStats {
+  dev: number;
+  ino: number;
+  mode: number;
+  nlink: number;
+  uid: number;
+  gid: number;
+  rdev: number;
+  size: number;
+  blksize: number;
+  blocks: number;
+  atimeMs: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  /** The creation time on iOS. Android doesn't record one: ctimeMs, as in libuv. */
+  birthtimeMs: number;
+}
+
 // prettier-ignore
 export interface NitroNodeNetSocket extends HybridObject<{ android: 'c++', ios: 'c++' }> {
   // Properties
@@ -311,6 +333,14 @@ export interface NitroNodeFsConstants extends HybridObject<{ android: 'c++', ios
   readonly S_IROTH: number;
   readonly S_IWOTH: number;
   readonly S_IXOTH: number;
+  readonly S_IFMT: number;
+  readonly S_IFREG: number;
+  readonly S_IFDIR: number;
+  readonly S_IFCHR: number;
+  readonly S_IFBLK: number;
+  readonly S_IFIFO: number;
+  readonly S_IFLNK: number;
+  readonly S_IFSOCK: number;
   readonly F_OK: number;
   readonly R_OK: number;
   readonly W_OK: number;
@@ -327,9 +357,16 @@ export interface NitroNodeFsConstants extends HybridObject<{ android: 'c++', ios
  */
 // prettier-ignore
 export interface NitroNodeFs extends HybridObject<{ android: 'c++', ios: 'c++' }> {
-  open(path: string, flags: number, mode: number): number;
-  close(fd: number): number;
-  ftruncate(fd: number, length: number): number;
+  // Every call comes in a pair: the plain one runs on Nitro's thread pool,
+  // *Sync on the calling thread. The promise of a numeric call resolves with
+  // the same number its *Sync twin returns, a negated errno included.
+
+  open(path: string, flags: number, mode: number): Promise<number>;
+  openSync(path: string, flags: number, mode: number): number;
+  close(fd: number): Promise<number>;
+  closeSync(fd: number): number;
+  ftruncate(fd: number, length: number): Promise<number>;
+  ftruncateSync(fd: number, length: number): number;
 
   read(fd: number, length: number, position: number): Promise<ArrayBuffer>;
   readSync(fd: number, buffer: ArrayBuffer, offset: number, length: number, position: number): number;
@@ -341,15 +378,31 @@ export interface NitroNodeFs extends HybridObject<{ android: 'c++', ios: 'c++' }
   writeFile(path: string, data: ArrayBuffer, offset: number, length: number, flags: number, mode: number): Promise<void>;
   writeFileSync(path: string, data: ArrayBuffer, offset: number, length: number, flags: number, mode: number): number;
 
-  mkdir(path: string, mode: number): number;
+  mkdir(path: string, mode: number): Promise<number>;
+  mkdirSync(path: string, mode: number): number;
   /** mkdir -p. */
-  mkdirRecursive(path: string, mode: number): number;
-  unlink(path: string): number;
-  rmdir(path: string): number;
+  mkdirRecursive(path: string, mode: number): Promise<number>;
+  mkdirRecursiveSync(path: string, mode: number): number;
+  unlink(path: string): Promise<number>;
+  unlinkSync(path: string): number;
+  rmdir(path: string): Promise<number>;
+  rmdirSync(path: string): number;
   /** rm -r: the path and, for a directory, everything in it. */
-  rmRecursive(path: string): number;
-  access(path: string, mode: number): number;
+  rmRecursive(path: string): Promise<number>;
+  rmRecursiveSync(path: string): number;
+  access(path: string, mode: number): Promise<number>;
+  accessSync(path: string, mode: number): number;
+
   /** The names in a directory, without '.' and '..'. */
-  readdir(path: string): string[];
-  statfs(path: string): StatFs;
+  readdir(path: string): Promise<string[]>;
+  readdirSync(path: string): string[];
+  statfs(path: string): Promise<StatFs>;
+  statfsSync(path: string): StatFs;
+  stat(path: string): Promise<FileStats>;
+  statSync(path: string): FileStats;
+  /** stat(), but about a symbolic link itself rather than what it points to. */
+  lstat(path: string): Promise<FileStats>;
+  lstatSync(path: string): FileStats;
+  fstat(fd: number): Promise<FileStats>;
+  fstatSync(fd: number): FileStats;
 }

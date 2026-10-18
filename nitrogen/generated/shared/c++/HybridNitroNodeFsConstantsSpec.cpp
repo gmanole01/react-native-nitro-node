@@ -42,6 +42,14 @@ namespace margelo::nitro::node {
       prototype.registerHybridGetter("S_IROTH", &HybridNitroNodeFsConstantsSpec::getS_IROTH);
       prototype.registerHybridGetter("S_IWOTH", &HybridNitroNodeFsConstantsSpec::getS_IWOTH);
       prototype.registerHybridGetter("S_IXOTH", &HybridNitroNodeFsConstantsSpec::getS_IXOTH);
+      prototype.registerHybridGetter("S_IFMT", &HybridNitroNodeFsConstantsSpec::getS_IFMT);
+      prototype.registerHybridGetter("S_IFREG", &HybridNitroNodeFsConstantsSpec::getS_IFREG);
+      prototype.registerHybridGetter("S_IFDIR", &HybridNitroNodeFsConstantsSpec::getS_IFDIR);
+      prototype.registerHybridGetter("S_IFCHR", &HybridNitroNodeFsConstantsSpec::getS_IFCHR);
+      prototype.registerHybridGetter("S_IFBLK", &HybridNitroNodeFsConstantsSpec::getS_IFBLK);
+      prototype.registerHybridGetter("S_IFIFO", &HybridNitroNodeFsConstantsSpec::getS_IFIFO);
+      prototype.registerHybridGetter("S_IFLNK", &HybridNitroNodeFsConstantsSpec::getS_IFLNK);
+      prototype.registerHybridGetter("S_IFSOCK", &HybridNitroNodeFsConstantsSpec::getS_IFSOCK);
       prototype.registerHybridGetter("F_OK", &HybridNitroNodeFsConstantsSpec::getF_OK);
       prototype.registerHybridGetter("R_OK", &HybridNitroNodeFsConstantsSpec::getR_OK);
       prototype.registerHybridGetter("W_OK", &HybridNitroNodeFsConstantsSpec::getW_OK);
