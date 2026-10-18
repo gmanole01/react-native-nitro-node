@@ -55,6 +55,12 @@
         "implementationClassName": "HybridOs"
       }
     },
+    "NitroNodeTimers": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTimers"
+      }
+    },
     "NitroNodeTls": {
       "all": {
         "language": "c++",

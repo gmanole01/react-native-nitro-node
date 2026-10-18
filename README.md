@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, running on a real libuv event loop.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `querystring` · `buffer` · `os` · `path` · `process`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `timers` · `querystring` · `buffer` · `os` · `path` · `process`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -38,6 +38,7 @@ Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js'
 - 🌐 **HTTP client and server:** an `http` module with streaming bodies, chunked encoding, keep-alive and upgrade/CONNECT events.
 - 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, with certificate verification against the system's trust store, SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
 - 📁 **File system:** `fs` with files, file descriptors, directories and `statfs`, in callback and `*Sync` forms. Reads and writes run off the JS thread.
+- ⏱️ **Timers that keep running in the background:** `setTimeout`, `setInterval` and `setImmediate` run on the libuv loop, so they go on while React Native's own timers are paused. `process.nextTick` and the other modules use them too.
 - 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` are powered by **[c-ares](https://c-ares.org)**, which Node also uses.
 - 🧵 **Off the JS thread:** all I/O runs on a dedicated libuv loop thread. Results are delivered back to JavaScript as events.
 - 📦 **Node-style imports:** every module supports both `import net from '…/net'` and `import { connect } from '…/net'`.
@@ -59,6 +60,34 @@ cd ios && pod install
 ```
 
 Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt with the package for both platforms, so there is nothing else to install.
+
+### Metro
+
+Wrap your Metro config with `withNitroNode`:
+
+```js
+// metro.config.js
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const { withNitroNode } = require('react-native-nitro-node/metro');
+
+const config = {};
+
+module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config));
+```
+
+It makes Node's module names resolve to this library, for your code and for every package you use: `fs`, `net`, `process` and the rest, also as `node:fs` and `fs/`. Packages written for Node then work as they are.
+
+It matters most for `process`. Streams (and so sockets and HTTP bodies) defer their events with `process.nextTick` from the `process` npm package, which runs on React Native's timers, and React Native pauses those while the app is in the background. This library's `nextTick` runs on its own libuv timers, which keep going. Without the redirect everything works while the app is in the foreground, but stream events such as `'end'`, `'finish'` and `'close'` wait until the app comes back.
+
+To redirect only some modules, list them:
+
+```js
+module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config), {
+  modules: ['process', 'timers'],
+});
+```
+
+The names are `buffer`, `dns`, `events`, `fs`, `http`, `https`, `net`, `os`, `path`, `process`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
@@ -85,6 +114,7 @@ import http from 'react-native-nitro-node/http';
 import https from 'react-native-nitro-node/https';
 import { EventEmitter } from 'react-native-nitro-node/events';
 import { Readable, pipeline } from 'react-native-nitro-node/stream';
+import { setTimeout, setImmediate } from 'react-native-nitro-node/timers';
 import querystring from 'react-native-nitro-node/querystring';
 import os from 'react-native-nitro-node/os';
 import path from 'react-native-nitro-node/path';
@@ -253,6 +283,38 @@ querystring.stringify({ q: 'nitro node', tags: ['tcp', 'tls'], page: 2 });
 querystring.escape('a&b=c'); // 'a%26b%3Dc'
 ```
 
+### Timers
+
+`timers` has Node's `setTimeout`, `setInterval` and `setImmediate`, with their `clear*` functions:
+
+```ts
+import { setInterval, clearInterval, setImmediate } from 'react-native-nitro-node/timers';
+
+const poll = setInterval(() => console.log('still running'), 60_000);
+// ...
+clearInterval(poll);
+
+setImmediate(() => console.log('after the I/O that is already in'));
+```
+
+They run on the library's libuv loop, not on React Native's timers, which React Native pauses while the app is in the background. This library's timers keep going for as long as the operating system lets the app run. iOS suspends an app soon after it goes to the background unless it has a background mode or task, and Android may freeze apps in the background; nothing runs in JavaScript then.
+
+The global `setTimeout` and friends stay React Native's: import these where you need them. With [`withNitroNode`](#metro), packages that `require('timers')` get them too.
+
+`setImmediate` runs its callback after the I/O events that are already in, like Node, and not as a microtask, like React Native's own.
+
+### Process
+
+`process.nextTick` defers a callback to after the current code, like Node's:
+
+```ts
+import process from 'react-native-nitro-node/process';
+
+process.nextTick((name) => console.log(`hello ${name}`), 'nitro');
+```
+
+It runs on the library's `setImmediate`, so it keeps working in the background too; `net`, `http`, `dns` and, with [`withNitroNode`](#metro), streams use it. Like Node's, it comes before timers and before immediates set after it. Unlike Node's, it comes after promise callbacks, after I/O events that are already waiting, and after immediates set before it. The rest of `process` is the [`process`](https://www.npmjs.com/package/process) package's browser stand-in, see [the table](#process-1).
+
 ### DNS
 
 ```ts
@@ -358,7 +420,19 @@ dns.lookup('nope.invalid', (err) => {
 | `dns.promises` | ❌ | Planned |
 | `resolveMx`, `resolveTxt`, `resolveSrv`, `reverse`, … | ❌ | Planned |
 
-### `events`, `stream`, `querystring`, `buffer`, `os`, `path`, `process`
+### `timers`
+
+| API | Status | Notes |
+|---|:---:|---|
+| `setTimeout()` / `clearTimeout()` | ✅ | On the libuv loop. Delays below 1 ms or above 2³¹−1 ms become 1 ms, as in Node |
+| `setInterval()` / `clearInterval()` | ✅ | The next tick is timed from the end of the callback, as in Node |
+| `setImmediate()` / `clearImmediate()` | ✅ | After the loop's I/O phase, as in Node |
+| `Timeout` | ✅ | `refresh()`, `close()`, `hasRef()`, `Symbol.toPrimitive` (so `clearTimeout(+timer)` works) and `Symbol.dispose` where the runtime has it |
+| `Immediate` | ✅ | `hasRef()` and `Symbol.dispose` where the runtime has it |
+| `ref()` / `unref()` | ✅ | Accepted, but no effect: an app has no process exit for a timer to hold up |
+| `timers/promises` | ❌ | Planned |
+
+### `events`, `stream`, `querystring`, `buffer`, `os`, `path`
 
 | API | Status | Notes |
 |---|:---:|---|
@@ -371,14 +445,25 @@ dns.lookup('nope.invalid', (err) => {
 | `os.EOL` | ✅ | |
 | Rest of `os` (`platform`, `cpus`, `networkInterfaces`, …) | ❌ | |
 | `path` | ✅ | The full POSIX implementation: `join`, `resolve`, `normalize`, `relative`, `dirname`, `basename`, `extname`, `isAbsolute`, `sep`, `delimiter`, `posix` |
-| `process.nextTick` | ✅ | |
+
+### `process`
+
+| API | Status | Notes |
+|---|:---:|---|
+| `process.nextTick()` | ✅ | On the library's `setImmediate`: before timers, but after promise callbacks, pending I/O and earlier immediates, unlike Node's |
+| `env`, `argv`, `version`, `versions` | ✅ | Empty: `{}`, `[]`, `''` and `{}` |
+| `title`, `browser` | ✅ | `'browser'` and `true`, as in the `process` package |
+| `cwd()` / `umask()` | ✅ | Always `'/'` and `0` |
+| `on()`, `once()`, `emit()` and the other listener methods | ✅ | Do nothing; `listeners()` returns `[]` |
+| `chdir()` / `binding()` | ❌ | Throw |
+| `exit()`, `pid`, `platform`, `memoryUsage()`, `hrtime()`, … | ❌ | |
 
 ## 🏗️ How it works
 
 ```mermaid
 flowchart TB
     subgraph JS["JavaScript (Hermes)"]
-        API["net · tls · http · https · dns · fs<br/><sub>Node-compatible TypeScript API</sub>"]
+        API["net · tls · http · https · dns · fs · timers<br/><sub>Node-compatible TypeScript API</sub>"]
     end
 
     subgraph Native["Native (C++)"]
@@ -404,7 +489,8 @@ flowchart TB
 - **One libuv loop, one thread.** A single `uv_loop_t` runs on its own thread for the whole life of the process. JavaScript calls post work to that thread, and libuv callbacks reach JavaScript as events. The JS thread never blocks on I/O.
 - **Nitro Modules** generate the C++ ↔ JS bindings, so every call goes straight through JSI with no serialization over a bridge.
 - **c-ares** performs DNS resolution asynchronously. On Android it's initialized with the system's DNS servers from `ConnectivityManager`.
-- **fs** calls go straight to POSIX. The short ones run on the JS thread, inside a `setImmediate` for the callback forms; reads and writes run on Nitro's thread pool.
+- **Timers** are `uv_timer_t` handles on the loop thread, and immediates a `uv_check_t` that runs after each I/O phase, as in Node. JavaScript keeps the timers' callbacks and asks the loop to wake it.
+- **fs** calls go straight to POSIX. The short ones run on the JS thread, inside a `setImmediate` (the library's own) for the callback forms; reads and writes run on Nitro's thread pool.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
 
@@ -434,6 +520,7 @@ Know the limits:
 - [ ] `http.Agent` with connection pooling and keep-alive reuse
 - [ ] `dns.promises` and `fs.promises`
 - [ ] `querystring.parse()`
+- [ ] `timers/promises`
 - [ ] `fs.stat` / `lstat` / `fstat` with `Stats`, and `readdir({ withFileTypes })`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
 
@@ -442,7 +529,6 @@ Know the limits:
 - [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
 - [ ] `url` and `util` entry points, for a fuller drop-in `node:*` replacement
-- [ ] A Metro resolver preset that maps `node:net`, `net`, `http`, … to this library, so existing npm packages work without changes
 
 ### Done
 - [x] `net`: TCP client and server on libuv
@@ -451,9 +537,11 @@ Know the limits:
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
 - [x] `events`, `stream` and `querystring` entry points
+- [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
+- [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `fs`: files, file descriptors, directories and `statfs`
-- [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` helpers
+- [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 
 Have a use case that's missing? [Open an issue](https://github.com/gmanole01/react-native-nitro-node/issues).

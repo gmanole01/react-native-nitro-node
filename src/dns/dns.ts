@@ -1,5 +1,7 @@
 import { NitroDns, NitroDnsInit } from '../native';
 import process from '../process';
+import { setTimeout, clearTimeout } from '../timers';
+import type { Timeout } from '../timers';
 import { isIP } from '../ip';
 import { dnsError } from '../errors';
 import type { DnsException } from '../types';
@@ -136,7 +138,7 @@ function nativeResolve(
   const timeout = validateTimeout(options?.timeout ?? defaultTimeout);
 
   let settled = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: Timeout | null = null;
 
   function settle(err: DnsException | null, addresses: string[]) {
     if (settled) {

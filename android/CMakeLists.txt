@@ -41,6 +41,7 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/tls/HybridTlsSocket.cpp
         ../cpp/tls/HybridTlsServer.cpp
         ../cpp/tls/HybridTlsSecureContext.cpp
+        ../cpp/timers/HybridTimers.cpp
 )
 
 # Add Nitrogen specs :)
@@ -55,6 +56,7 @@ include_directories(
         "../cpp/dns"
         "../cpp/fs"
         "../cpp/tls"
+        "../cpp/timers"
 )
 
 target_include_directories(${PACKAGE_NAME} PRIVATE

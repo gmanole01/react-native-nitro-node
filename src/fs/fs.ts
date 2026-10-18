@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 import { NitroFs, NitroFsConstants } from '../native';
 import type { StatFs } from '../native';
 import { fsError } from '../errors';
+import { setImmediate } from '../timers';
 import type { BufferEncoding, ErrnoException } from '../types';
 
 export type { StatFs };

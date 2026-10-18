@@ -2,7 +2,9 @@ import { EventEmitter } from 'events';
 import { Readable, Writable } from 'readable-stream';
 import { HTTPParser } from 'http-parser-js';
 import { Buffer } from 'buffer';
-import process from 'process';
+import process from '../process';
+import { setTimeout, clearTimeout } from '../timers';
+import type { Timeout } from '../timers';
 import * as net from '../net';
 import type { AddressInfo, BufferEncoding, ErrnoException } from '../types';
 
@@ -831,7 +833,7 @@ class Server extends EventEmitter {
     //   request:   waiting for the rest of a request
     //   keepAlive: idle between two requests
     type TimerName = 'headers' | 'request' | 'keepAlive';
-    const timers: Record<TimerName, ReturnType<typeof setTimeout> | null> = {
+    const timers: Record<TimerName, Timeout | null> = {
       headers: null,
       request: null,
       keepAlive: null,

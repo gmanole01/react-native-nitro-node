@@ -7,6 +7,7 @@ import type {
   NitroNodeNetSocket,
   NitroNodeNetServer,
   NitroNodeOs,
+  NitroNodeTimers,
   NitroNodeTls,
   NitroNodeTlsSocket,
   NitroNodeUv,
@@ -32,6 +33,8 @@ export const NitroFsConstants =
   NitroModules.createHybridObject<NitroNodeFsConstants>('NitroNodeFsConstants');
 export const NitroOs =
   NitroModules.createHybridObject<NitroNodeOs>('NitroNodeOs');
+export const NitroTimers =
+  NitroModules.createHybridObject<NitroNodeTimers>('NitroNodeTimers');
 
 // types
 export type {

@@ -3,7 +3,9 @@ import { Duplex } from 'readable-stream';
 import { EventEmitter } from 'events';
 import { Buffer } from 'buffer';
 import type { NitroNodeNetServer, NitroNodeNetSocket, SockAddr } from '../native';
-import process from 'process';
+import process from '../process';
+import { setTimeout, clearTimeout } from '../timers';
+import type { Timeout } from '../timers';
 import { generateWriteId } from '../utils';
 import * as dns from '../dns';
 import { UV_EOF } from '../uv';
@@ -439,7 +441,7 @@ class Socket extends Duplex {
   public bytesWritten: number = 0;
 
   public timeout: number | undefined = undefined;
-  private _timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private _timeoutTimer: Timeout | null = null;
 
   private _closeScheduled: boolean = false;
 
@@ -447,7 +449,7 @@ class Socket extends Duplex {
   private _connectAddresses: string[] = [];
   private _connectPort: number = 0;
   private _connectAttemptTimeout: number = DEFAULT_CONNECT_ATTEMPT_TIMEOUT;
-  private _connectAttemptTimer: ReturnType<typeof setTimeout> | null = null;
+  private _connectAttemptTimer: Timeout | null = null;
 
   // Options set through setNoDelay/setKeepAlive, kept so they can be given to
   // a native socket that is created later.

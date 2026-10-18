@@ -23,6 +23,7 @@
 #include <NitroModules/DefaultConstructableObject.hpp>
 #include "HybridFs.hpp"
 #include "HybridFsConstants.hpp"
+#include "HybridTimers.hpp"
 #include "HybridTls.hpp"
 
 namespace margelo::nitro::node {
@@ -114,6 +115,15 @@ void registerAllNatives() {
     "NitroNodeOs",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridNitroNodeOsSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "NitroNodeTimers",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridTimers>,
+                    "The HybridObject \"HybridTimers\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridTimers>();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(

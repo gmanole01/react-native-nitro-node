@@ -92,6 +92,7 @@ Pod::Spec.new do |s|
       '"$(PODS_TARGET_SRCROOT)/cpp/fs"',
       '"$(PODS_TARGET_SRCROOT)/cpp/os"',
       '"$(PODS_TARGET_SRCROOT)/cpp/tls"',
+      '"$(PODS_TARGET_SRCROOT)/cpp/timers"',
     ].join(' '),
     # tlsuv's TLS engine
     'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) TLS_IMPL=openssl USE_OPENSSL',

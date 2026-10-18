@@ -210,6 +210,37 @@ export interface NitroNodeUv extends HybridObject<{ android: 'c++'; ios: 'c++' }
   uv_strerror(error: number): string;
 }
 
+/**
+ * One-shot timers on the libuv loop, the native half of setTimeout and
+ * setInterval. JS picks the ids and runs the callbacks; an interval re-arms
+ * its timer after each callback, as Node does.
+ *
+ * A timer can fire just as it is stopped, so onTimeout may still arrive for
+ * an id that was stopped: ignore ids you don't know. Starting an armed id again
+ * restarts it, but a firing already on its way would still arrive, so use a
+ * new id to restart a timer (refresh()).
+ *
+ * Immediates (setImmediate) run, as in Node, right after the loop's I/O
+ * phase: JS keeps the queue and asks for one onImmediate per batch.
+ */
+// prettier-ignore
+export interface NitroNodeTimers extends HybridObject<{ android: 'c++'; ios: 'c++' }> {
+  // Properties
+  onTimeout: (id: number) => void;
+  onImmediate: () => void;
+
+  // Methods
+  /** Fires onTimeout(id) once after `delay` milliseconds (truncated, at least 0). */
+  start(id: number, delay: number): void;
+  /** Cancels the timer; a no-op for an id that already fired or never started. */
+  stop(id: number): void;
+  /**
+   * Fires onImmediate once, after the I/O phase of the loop's current
+   * iteration. Calls made before it fires get that same onImmediate.
+   */
+  scheduleImmediate(): void;
+}
+
 export interface NitroNodeDnsInit extends HybridObject<{ android: 'kotlin' }> {
   init(): void;
 }

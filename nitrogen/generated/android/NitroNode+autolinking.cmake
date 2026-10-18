@@ -39,6 +39,7 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsServerSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsSecureContextSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeUvSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeTimersSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeDnsInitSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeOsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeDnsSpec.cpp
