@@ -184,6 +184,48 @@ export async function runFsTests(step: Step) {
     expectEqual('exists(root)', exists, true);
   });
 
+  await step('fs every callback form, on the thread pool', async () => {
+    const dir = `${root}/cb`;
+    await call(cb => fs.mkdir(dir, cb));
+    await expectCodeAsync('mkdir(existing)', 'EEXIST', call(cb => fs.mkdir(dir, cb)));
+    await call(cb => fs.mkdir(`${dir}/a/b`, { recursive: true }, cb));
+    await call(cb => fs.mkdir(`${dir}/a/b`, { recursive: true }, cb));
+
+    const [fd] = await call<[number]>(cb => fs.open(`${dir}/a/f.txt`, 'w+', cb));
+    if (!(fd > 2)) {
+      throw new Error(`open gave fd ${fd}`);
+    }
+    await call(cb => fs.write(fd, 'callbacks', cb as any));
+    const [stats] = await call<[fs.Stats]>(cb => fs.fstat(fd, cb));
+    expectEqual('fstat size', stats.size, 9);
+    await call(cb => fs.ftruncate(fd, 4, cb));
+    await call(cb => fs.close(fd, cb));
+    await expectCodeAsync('close(closed)', 'EBADF', call(cb => fs.close(fd, cb)));
+    await expectCodeAsync("open(missing, 'r')", 'ENOENT', call(cb => fs.open(`${dir}/nope`, 'r', cb)));
+    expectEqual('content', fs.readFileSync(`${dir}/a/f.txt`, 'utf8'), 'call');
+
+    await call(cb => fs.access(`${dir}/a/f.txt`, fs.constants.R_OK, cb));
+    const accessErr = await expectCodeAsync('access(missing)', 'ENOENT', call(cb => fs.access(`${dir}/nope`, cb)));
+    expectEqual('access error', accessErr.message, `ENOENT: no such file or directory, access '${dir}/nope'`);
+    expectEqual('exists(missing)', await new Promise<boolean>(r => fs.exists(`${dir}/nope`, r)), false);
+
+    const [names] = await call<[string[]]>(cb => fs.readdir(`${dir}/a`, cb));
+    expectEqual('readdir', names.sort().join(','), 'b,f.txt');
+    const readdirErr = await expectCodeAsync('readdir(missing)', 'ENOENT', call(cb => fs.readdir(`${dir}/nope`, cb)));
+    expectEqual('readdir syscall', readdirErr.syscall, 'scandir');
+    const [lst] = await call<[fs.Stats]>(cb => fs.lstat(`${dir}/a/b`, cb));
+    expectEqual('lstat isDirectory', lst.isDirectory(), true);
+    await expectCodeAsync('statfs(missing)', 'ENOENT', call(cb => fs.statfs(`${dir}/nope`, cb)));
+
+    await call(cb => fs.unlink(`${dir}/a/f.txt`, cb));
+    await expectCodeAsync('unlink(missing)', 'ENOENT', call(cb => fs.unlink(`${dir}/a/f.txt`, cb)));
+    await expectCodeAsync('rmdir(non-empty)', 'ENOTEMPTY', call(cb => fs.rmdir(`${dir}/a`, cb)));
+    await call(cb => fs.rm(`${dir}/nope`, { force: true }, cb));
+    await expectCodeAsync('rm(missing)', 'ENOENT', call(cb => fs.rm(`${dir}/nope`, cb)));
+    await call(cb => fs.rm(dir, { recursive: true }, cb));
+    expectEqual('existsSync after rm', fs.existsSync(dir), false);
+  });
+
   await step('fs accepts file:// strings and URL objects', async () => {
     fs.writeFileSync(`file://${root}/url%20file.txt`, 'via url');
     expectEqual('file:// string', fs.readFileSync(`${root}/url file.txt`, 'utf8'), 'via url');
