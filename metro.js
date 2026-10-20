@@ -19,6 +19,9 @@
  * to redirect only some modules:
  *
  *   withNitroNode(config, { includeAppCode: true, modules: ['process', 'timers'] });
+ *
+ * `debug: true` logs every request for a Node module name, with the file that
+ * makes it and what it resolves to.
  */
 
 const path = require('path');
@@ -85,16 +88,49 @@ function isDependency(file) {
 }
 
 /**
+ * Why a request for Node module `name` from `from` is left to the default
+ * resolver, or null when it goes to this library.
+ */
+function keepReason(name, from, modules, includeAppCode) {
+  if (!modules.has(name)) {
+    return 'not in `modules`';
+  }
+  if (OWN_CODE.some((dir) => from.startsWith(dir))) {
+    return "react-native-nitro-node's own code";
+  }
+  if (!includeAppCode && !isDependency(from)) {
+    return 'app code, see `includeAppCode`';
+  }
+  if (name in WRAPPED_PACKAGES && isInsidePackage(from, WRAPPED_PACKAGES[name])) {
+    return `inside ${WRAPPED_PACKAGES[name]}, which our ${name} wraps`;
+  }
+  return null;
+}
+
+/** What a resolution points to, for the debug log. */
+function describeResolution(resolution, root) {
+  if (resolution.type === 'sourceFile') {
+    return path.relative(root, resolution.filePath);
+  }
+  if (resolution.type === 'assetFiles') {
+    return resolution.filePaths.map((file) => path.relative(root, file)).join(', ');
+  }
+  return `(${resolution.type})`;
+}
+
+/**
  * Returns `config` with its resolver sending Node module names to this
  * library. Any resolveRequest already in `config` still handles everything
  * else.
  *
  * @template {import('metro-config').MetroConfig} T
  * @param {T} config
- * @param {{ modules?: string[], includeAppCode?: boolean }} [options]
+ * @param {{ modules?: string[], includeAppCode?: boolean, debug?: boolean }} [options]
  *   `modules`: the names to redirect, from `MODULES`. Defaults to all of them.
  *   `includeAppCode`: redirect them in the app's own code too, not only in
  *   its dependencies. Defaults to false.
+ *   `debug`: log each request for a Node module name and how it resolves.
+ *   Defaults to false.
  * @returns {T}
  */
 function withNitroNode(config, options = {}) {
@@ -109,6 +145,20 @@ function withNitroNode(config, options = {}) {
   }
 
   const includeAppCode = options.includeAppCode === true;
+  const debug = options.debug === true;
+  // Paths in the log are relative to the app
+  const root = config.projectRoot ?? process.cwd();
+  const log = (from, moduleName, outcome) =>
+    console.log(
+      `[withNitroNode] ${path.relative(root, from)}: '${moduleName}' ${outcome}`,
+    );
+
+  if (debug) {
+    console.log(
+      `[withNitroNode] redirecting ${[...modules].join(', ')} in ` +
+        (includeAppCode ? 'dependencies and app code' : 'dependencies'),
+    );
+  }
 
   const resolver = config.resolver ?? {};
   const previous = resolver.resolveRequest;
@@ -118,25 +168,36 @@ function withNitroNode(config, options = {}) {
     resolver: {
       ...resolver,
       resolveRequest(context, moduleName, platform) {
-        const name = nodeModuleName(moduleName);
-        const from = context.originModulePath;
-        if (
-          name !== null &&
-          modules.has(name) &&
-          (includeAppCode || isDependency(from)) &&
-          !OWN_CODE.some((dir) => from.startsWith(dir)) &&
-          !(
-            name in WRAPPED_PACKAGES &&
-            isInsidePackage(from, WRAPPED_PACKAGES[name])
-          )
-        ) {
-          return {
-            type: 'sourceFile',
-            filePath: path.join(__dirname, 'src', name, 'index.ts'),
-          };
-        }
         const resolve = previous ?? context.resolveRequest;
-        return resolve(context, moduleName, platform);
+        const name = nodeModuleName(moduleName);
+        if (name === null) {
+          return resolve(context, moduleName, platform);
+        }
+        const from = context.originModulePath;
+        const reason = keepReason(name, from, modules, includeAppCode);
+        if (reason === null) {
+          const filePath = path.join(__dirname, 'src', name, 'index.ts');
+          if (debug) {
+            log(from, moduleName, `→ ${path.relative(root, filePath)}`);
+          }
+          return { type: 'sourceFile', filePath };
+        }
+        if (!debug) {
+          return resolve(context, moduleName, platform);
+        }
+        let resolution;
+        try {
+          resolution = resolve(context, moduleName, platform);
+        } catch (error) {
+          log(from, moduleName, `left alone (${reason}) → not found`);
+          throw error;
+        }
+        log(
+          from,
+          moduleName,
+          `left alone (${reason}) → ${describeResolution(resolution, root)}`,
+        );
+        return resolution;
       },
     },
   };
