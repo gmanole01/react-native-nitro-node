@@ -11,6 +11,7 @@ import { runHttpTests } from './httpTests';
 import { runGcTests } from './gcTests';
 import { runTlsTests } from './tlsTests';
 import { runFsTests } from './fsTests';
+import { runTimersTests } from './timersTests';
 import {
   type MemoryReport,
   type MemorySample,
@@ -30,6 +31,7 @@ async function runTests(report: (result: StepResult) => void) {
   await runTlsTests(step);
   await runGcTests(step);
   await runFsTests(step);
+  await runTimersTests(step);
 
   const summary =
     `${counts.passed} passed, ${counts.failed} failed, ` +
@@ -113,8 +115,6 @@ function App(): React.JSX.Element {
         setRunning(false);
       });
   }, []);
-
-  useEffect(run, [run]);
 
   const lastSample = memorySamples[memorySamples.length - 1];
   const firstSample = memorySamples[0];
