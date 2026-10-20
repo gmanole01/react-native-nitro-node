@@ -35,6 +35,9 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["NitroNode_" + name]).toInteger()
 }
 
+def sodiumEnabled = hasProperty('sodiumEnabled') ? project.property('sodiumEnabled').toBoolean() : false // Default to false
+logger.warn("[react-native-nitro-node] Has libsodium ${sodiumEnabled ? "enabled" : "disabled"}!")
+
 android {
   namespace "com.margelo.nitro.node"
 
@@ -49,7 +52,10 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-frtti -fexceptions -Wall -Wextra -fstack-protector-all"
-        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON", "-DCMAKE_PREFIX_PATH=/opt/homebrew"
+        arguments "-DANDROID_STL=c++_shared",
+                  "-DSODIUM_ENABLED=${sodiumEnabled}",
+                  "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                  "-DCMAKE_PREFIX_PATH=/opt/homebrew"
         abiFilters (*reactNativeArchitectures())
 
         buildTypes {
@@ -137,6 +143,16 @@ dependencies {
 
   // Add a dependency on NitroModules
   implementation project(":react-native-nitro-modules")
+
+  // Static OpenSSL: linked into libQuickCrypto.so with its symbols localized, so we
+  // neither ship a libcrypto.so that collides with another library's nor export
+  // OpenSSL symbols that could interpose. See CMakeLists.txt and issue #1059.
+  implementation 'io.github.ronickg:openssl-static:3.6.2-3'
+
+  if (sodiumEnabled) {
+    // Add a dependency on libsodium
+    implementation 'io.github.ronickg:sodium:1.0.22-2'
+  }
 }
 
 if (isNewArchitectureEnabled()) {

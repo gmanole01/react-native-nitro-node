@@ -1,0 +1,256 @@
+import { NitroModules } from 'react-native-nitro-modules';
+import { Buffer } from 'buffer';
+import type { NitroNodeCryptoRsaCipher as RsaCipher } from '../specs/rsaCipher.nitro';
+import type { BinaryLike } from '../utils';
+import {
+  binaryLikeToArrayBuffer as toAB,
+  isStringOrBuffer,
+  KFormatType,
+  KeyEncoding,
+} from '../utils';
+import { isCryptoKey } from './utils';
+import { KeyObject, CryptoKey } from './classes';
+import { constants } from '../constants';
+
+interface PublicCipherOptions {
+  key: BinaryLike | KeyObject | CryptoKey;
+  padding?: number;
+  oaepHash?: string;
+  oaepLabel?: BinaryLike;
+}
+
+type PublicCipherInput =
+  | BinaryLike
+  | KeyObject
+  | CryptoKey
+  | PublicCipherOptions;
+
+interface PrivateCipherOptions {
+  key: BinaryLike | KeyObject | CryptoKey;
+  padding?: number;
+  oaepHash?: string;
+  oaepLabel?: BinaryLike;
+}
+
+type PrivateCipherInput =
+  | BinaryLike
+  | KeyObject
+  | CryptoKey
+  | PrivateCipherOptions;
+
+function preparePublicCipherKey(
+  key: PublicCipherInput,
+  isEncrypt: boolean,
+): {
+  keyHandle: KeyObject;
+  padding?: number;
+  oaepHash?: string;
+  oaepLabel?: ArrayBuffer;
+} {
+  let keyObj: KeyObject;
+  let padding: number | undefined;
+  let oaepHash: string | undefined;
+  let oaepLabel: ArrayBuffer | undefined;
+
+  if (key instanceof KeyObject) {
+    if (isEncrypt && key.type !== 'public') {
+      throw new Error('publicEncrypt requires a public key');
+    }
+    // publicDecrypt accepts both public and private keys (Node.js behavior)
+    // A private key contains the public components needed for verify_recover
+    keyObj = key;
+  } else if (isCryptoKey(key)) {
+    const cryptoKey = key as CryptoKey;
+    keyObj = cryptoKey.keyObject;
+  } else if (isStringOrBuffer(key)) {
+    const data = toAB(key);
+    const isPem = typeof key === 'string' && key.includes('-----BEGIN');
+    const isPrivatePem =
+      typeof key === 'string' && key.includes('-----BEGIN PRIVATE');
+    // publicDecrypt accepts both public and private keys (Node.js behavior)
+    if (!isEncrypt && isPrivatePem) {
+      keyObj = KeyObject.createKeyObject(
+        'private',
+        data,
+        KFormatType.PEM,
+        KeyEncoding.PKCS8,
+      );
+    } else {
+      keyObj = KeyObject.createKeyObject(
+        'public',
+        data,
+        isPem ? KFormatType.PEM : KFormatType.DER,
+        KeyEncoding.SPKI,
+      );
+    }
+  } else if (typeof key === 'object' && 'key' in key) {
+    const options = key as PublicCipherOptions;
+    const result = preparePublicCipherKey(options.key, isEncrypt);
+    keyObj = result.keyHandle;
+    padding = options.padding;
+    oaepHash = options.oaepHash;
+    if (options.oaepLabel) {
+      oaepLabel = toAB(options.oaepLabel);
+    }
+  } else {
+    throw new Error('Invalid key input');
+  }
+
+  return { keyHandle: keyObj, padding, oaepHash, oaepLabel };
+}
+
+export function publicEncrypt(
+  key: PublicCipherInput,
+  buffer: BinaryLike,
+): Buffer {
+  const { keyHandle, padding, oaepHash, oaepLabel } = preparePublicCipherKey(
+    key,
+    true,
+  );
+
+  const rsaCipher: RsaCipher = NitroModules.createHybridObject('NitroNodeCryptoRsaCipher');
+  const data = toAB(buffer);
+  const paddingMode = padding ?? constants.RSA_PKCS1_OAEP_PADDING;
+  const hashAlgorithm = oaepHash || 'sha1';
+
+  try {
+    const encrypted = rsaCipher.encrypt(
+      keyHandle.handle,
+      data,
+      paddingMode,
+      hashAlgorithm,
+      oaepLabel,
+    );
+    return Buffer.from(encrypted);
+  } catch (error) {
+    throw new Error(`publicEncrypt failed: ${(error as Error).message}`);
+  }
+}
+
+export function publicDecrypt(
+  key: PublicCipherInput,
+  buffer: BinaryLike,
+): Buffer {
+  const { keyHandle, padding } = preparePublicCipherKey(key, false);
+
+  const rsaCipher: RsaCipher = NitroModules.createHybridObject('NitroNodeCryptoRsaCipher');
+  const data = toAB(buffer);
+  const paddingMode = padding ?? constants.RSA_PKCS1_PADDING;
+
+  try {
+    const decrypted = rsaCipher.publicDecrypt(
+      keyHandle.handle,
+      data,
+      paddingMode,
+    );
+    return Buffer.from(decrypted);
+  } catch {
+    // Bleichenbacher mitigation: surface a single, content-independent error
+    // for every decrypt failure so an attacker cannot use error-message
+    // differences as a padding oracle. The native side already collapses its
+    // OpenSSL error codes to the same opaque message; we drop it here too
+    // rather than re-leaking it via string interpolation.
+    throw new Error('publicDecrypt failed');
+  }
+}
+
+function preparePrivateCipherKey(
+  key: PrivateCipherInput,
+  isEncrypt: boolean,
+): {
+  keyHandle: KeyObject;
+  padding?: number;
+  oaepHash?: string;
+  oaepLabel?: ArrayBuffer;
+} {
+  let keyObj: KeyObject;
+  let padding: number | undefined;
+  let oaepHash: string | undefined;
+  let oaepLabel: ArrayBuffer | undefined;
+
+  if (key instanceof KeyObject) {
+    if (isEncrypt && key.type !== 'private') {
+      throw new Error('privateEncrypt requires a private key');
+    }
+    if (!isEncrypt && key.type !== 'private') {
+      throw new Error('privateDecrypt requires a private key');
+    }
+    keyObj = key;
+  } else if (isCryptoKey(key)) {
+    const cryptoKey = key as CryptoKey;
+    keyObj = cryptoKey.keyObject;
+  } else if (isStringOrBuffer(key)) {
+    const data = toAB(key);
+    const isPem = typeof key === 'string' && key.includes('-----BEGIN');
+    keyObj = KeyObject.createKeyObject(
+      'private',
+      data,
+      isPem ? KFormatType.PEM : KFormatType.DER,
+      KeyEncoding.PKCS8,
+    );
+  } else if (typeof key === 'object' && 'key' in key) {
+    const options = key as PrivateCipherOptions;
+    const result = preparePrivateCipherKey(options.key, isEncrypt);
+    keyObj = result.keyHandle;
+    padding = options.padding;
+    oaepHash = options.oaepHash;
+    if (options.oaepLabel) {
+      oaepLabel = toAB(options.oaepLabel);
+    }
+  } else {
+    throw new Error('Invalid key input');
+  }
+
+  return { keyHandle: keyObj, padding, oaepHash, oaepLabel };
+}
+
+export function privateEncrypt(
+  key: PrivateCipherInput,
+  buffer: BinaryLike,
+): Buffer {
+  const { keyHandle, padding } = preparePrivateCipherKey(key, true);
+
+  const rsaCipher: RsaCipher = NitroModules.createHybridObject('NitroNodeCryptoRsaCipher');
+  const data = toAB(buffer);
+  const paddingMode = padding ?? constants.RSA_PKCS1_PADDING;
+
+  try {
+    const encrypted = rsaCipher.privateEncrypt(
+      keyHandle.handle,
+      data,
+      paddingMode,
+    );
+    return Buffer.from(encrypted);
+  } catch (error) {
+    throw new Error(`privateEncrypt failed: ${(error as Error).message}`);
+  }
+}
+
+export function privateDecrypt(
+  key: PrivateCipherInput,
+  buffer: BinaryLike,
+): Buffer {
+  const { keyHandle, padding, oaepHash, oaepLabel } = preparePrivateCipherKey(
+    key,
+    false,
+  );
+
+  const rsaCipher: RsaCipher = NitroModules.createHybridObject('NitroNodeCryptoRsaCipher');
+  const data = toAB(buffer);
+  const paddingMode = padding ?? constants.RSA_PKCS1_OAEP_PADDING;
+  const hashAlgorithm = oaepHash || 'sha1';
+
+  try {
+    const decrypted = rsaCipher.privateDecrypt(
+      keyHandle.handle,
+      data,
+      paddingMode,
+      hashAlgorithm,
+      oaepLabel,
+    );
+    return Buffer.from(decrypted);
+  } catch {
+    // Bleichenbacher mitigation — see publicDecrypt above.
+    throw new Error('privateDecrypt failed');
+  }
+}

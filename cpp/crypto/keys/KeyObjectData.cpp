@@ -1,0 +1,298 @@
+#include "KeyObjectData.hpp"
+#include "QuickCryptoUtils.hpp"
+#include <cstdio>
+#include <optional>
+
+namespace margelo::nitro::node {
+
+ncrypto::EVPKeyPointer::PrivateKeyEncodingConfig GetPrivateKeyEncodingConfig(KFormatType format, KeyEncoding type) {
+  auto pk_format = static_cast<ncrypto::EVPKeyPointer::PKFormatType>(format);
+  auto pk_type = static_cast<ncrypto::EVPKeyPointer::PKEncodingType>(type);
+
+  auto config = ncrypto::EVPKeyPointer::PrivateKeyEncodingConfig(false, pk_format, pk_type);
+  return config;
+}
+
+ncrypto::EVPKeyPointer::PublicKeyEncodingConfig GetPublicKeyEncodingConfig(KFormatType format, KeyEncoding type) {
+  auto pk_format = static_cast<ncrypto::EVPKeyPointer::PKFormatType>(format);
+  auto pk_type = static_cast<ncrypto::EVPKeyPointer::PKEncodingType>(type);
+
+  auto config = ncrypto::EVPKeyPointer::PublicKeyEncodingConfig(false, pk_format, pk_type);
+  return config;
+}
+
+KeyObjectData TryParsePrivateKey(std::shared_ptr<ArrayBuffer> key, std::optional<KFormatType> format, std::optional<KeyEncoding> type,
+                                 const std::optional<std::shared_ptr<ArrayBuffer>>& passphrase) {
+  // For PEM format, use PKCS8 as default encoding
+  KeyEncoding actualType = type.value_or(KeyEncoding::PKCS8);
+  auto config = GetPrivateKeyEncodingConfig(format.value(), actualType);
+
+  if (passphrase.has_value()) {
+    auto& passphrase_ptr = passphrase.value();
+    config.passphrase =
+        std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+  }
+
+  auto buffer = ncrypto::Buffer<const unsigned char>{key->data(), key->size()};
+
+  // Clear any existing OpenSSL errors before parsing
+  ERR_clear_error();
+
+  auto res = ncrypto::EVPKeyPointer::TryParsePrivateKey(config, buffer);
+  if (res) {
+    return KeyObjectData::CreateAsymmetric(KeyType::PRIVATE, std::move(res.value));
+  }
+
+  if (res.error.has_value() && res.error.value() == ncrypto::EVPKeyPointer::PKParseError::NEED_PASSPHRASE) {
+    throw std::runtime_error("Passphrase required for encrypted key");
+  }
+
+  // ncrypto only maps ERR_LIB_PEM/PEM_R_BAD_PASSWORD_READ to NEED_PASSPHRASE. On OpenSSL 3.6+
+  // PEM_read_bio_PrivateKey surfaces a missing-passphrase callback as
+  // ERR_R_INTERRUPTED_OR_CANCELLED on ERR_LIB_CRYPTO instead.
+  if (!passphrase.has_value() && res.openssl_error.has_value() &&
+      ERR_GET_REASON(res.openssl_error.value()) == ERR_R_INTERRUPTED_OR_CANCELLED) {
+    throw std::runtime_error("Passphrase required for encrypted key");
+  }
+
+  // Get OpenSSL error details
+  unsigned long err = ERR_get_error();
+  char err_buf[256];
+  ERR_error_string_n(err, err_buf, sizeof(err_buf));
+  throw std::runtime_error("Failed to read private key: " + std::string(err_buf));
+}
+
+KeyObjectData::KeyObjectData(std::nullptr_t) : key_type_(KeyType::SECRET) {}
+
+KeyObjectData::KeyObjectData(std::shared_ptr<ArrayBuffer> symmetric_key)
+    : key_type_(KeyType::SECRET), data_(std::make_shared<Data>(std::move(symmetric_key))) {}
+
+KeyObjectData::KeyObjectData(KeyType type, ncrypto::EVPKeyPointer&& pkey)
+    : key_type_(type), data_(std::make_shared<Data>(std::move(pkey))) {}
+
+KeyObjectData KeyObjectData::CreateSecret(std::shared_ptr<ArrayBuffer> key) {
+  return KeyObjectData(std::move(key));
+}
+
+KeyObjectData KeyObjectData::CreateAsymmetric(KeyType key_type, ncrypto::EVPKeyPointer&& pkey) {
+  CHECK(pkey);
+  return KeyObjectData(key_type, std::move(pkey));
+}
+
+KeyType KeyObjectData::GetKeyType() const {
+  if (!data_) {
+    throw std::runtime_error("Invalid key object: no key data available");
+  }
+  return key_type_;
+}
+
+const ncrypto::EVPKeyPointer& KeyObjectData::GetAsymmetricKey() const {
+  if (key_type_ == KeyType::SECRET) {
+    throw std::runtime_error("Cannot get asymmetric key from secret key object");
+  }
+  if (!data_) {
+    throw std::runtime_error("Invalid key object: no key data available");
+  }
+  return data_->asymmetric_key;
+}
+
+std::shared_ptr<ArrayBuffer> KeyObjectData::GetSymmetricKey() const {
+  if (key_type_ != KeyType::SECRET) {
+    throw std::runtime_error("Cannot get symmetric key from asymmetric key object");
+  }
+  if (!data_) {
+    throw std::runtime_error("Invalid key object: no key data available");
+  }
+  return data_->symmetric_key;
+}
+
+size_t KeyObjectData::GetSymmetricKeySize() const {
+  if (key_type_ != KeyType::SECRET) {
+    throw std::runtime_error("Cannot get symmetric key size from asymmetric key object");
+  }
+  if (!data_) {
+    throw std::runtime_error("Invalid key object: no key data available");
+  }
+  return data_->symmetric_key->size();
+}
+
+KeyObjectData KeyObjectData::GetPublicOrPrivateKey(std::shared_ptr<ArrayBuffer> key, std::optional<KFormatType> format,
+                                                   std::optional<KeyEncoding> type,
+                                                   const std::optional<std::shared_ptr<ArrayBuffer>>& passphrase) {
+  if (key->size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    throw std::runtime_error("key is too big");
+  }
+
+  KFormatType actualFormat = format.value_or(KFormatType::DER);
+
+  if (actualFormat == KFormatType::PEM || actualFormat == KFormatType::DER) {
+    auto buffer = ncrypto::Buffer<const unsigned char>{key->data(), key->size()};
+
+    if (actualFormat == KFormatType::PEM) {
+      if (type.has_value() && type.value() == KeyEncoding::SPKI) {
+        auto res = ncrypto::EVPKeyPointer::TryParsePublicKeyPEM(buffer);
+        if (res) {
+          return CreateAsymmetric(KeyType::PUBLIC, std::move(res.value));
+        }
+        throw std::runtime_error("Failed to read PEM public key: key is not in SPKI format");
+      }
+
+      if (type.has_value() &&
+          (type.value() == KeyEncoding::PKCS8 || type.value() == KeyEncoding::SEC1 || type.value() == KeyEncoding::PKCS1)) {
+        auto config = GetPrivateKeyEncodingConfig(actualFormat, type.value());
+        if (passphrase.has_value()) {
+          auto& passphrase_ptr = passphrase.value();
+          config.passphrase =
+              std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+        }
+        ERR_clear_error();
+        auto private_res = ncrypto::EVPKeyPointer::TryParsePrivateKey(config, buffer);
+        if (private_res) {
+          return CreateAsymmetric(KeyType::PRIVATE, std::move(private_res.value));
+        }
+        unsigned long err = ERR_get_error();
+        char err_buf[256];
+        ERR_error_string_n(err, err_buf, sizeof(err_buf));
+        throw std::runtime_error("Failed to read PEM private key: " + std::string(err_buf));
+      }
+
+      auto res = ncrypto::EVPKeyPointer::TryParsePublicKeyPEM(buffer);
+      if (res) {
+        return CreateAsymmetric(KeyType::PUBLIC, std::move(res.value));
+      }
+
+      KeyEncoding actualType = KeyEncoding::PKCS8;
+      auto config = GetPrivateKeyEncodingConfig(actualFormat, actualType);
+      if (passphrase.has_value()) {
+        auto& passphrase_ptr = passphrase.value();
+        config.passphrase =
+            std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+      }
+
+      ERR_clear_error();
+
+      auto private_res = ncrypto::EVPKeyPointer::TryParsePrivateKey(config, buffer);
+      if (private_res) {
+        return CreateAsymmetric(KeyType::PRIVATE, std::move(private_res.value));
+      }
+
+      unsigned long err = ERR_get_error();
+      char err_buf[256];
+      ERR_error_string_n(err, err_buf, sizeof(err_buf));
+      throw std::runtime_error("Failed to read PEM asymmetric key: " + std::string(err_buf));
+    } else if (actualFormat == KFormatType::DER) {
+      // For DER, try parsing as public key first
+      if (type.has_value() && type.value() == KeyEncoding::SPKI) {
+        auto public_config = GetPublicKeyEncodingConfig(actualFormat, type.value());
+        auto res = ncrypto::EVPKeyPointer::TryParsePublicKey(public_config, buffer);
+        if (res) {
+          return CreateAsymmetric(KeyType::PUBLIC, std::move(res.value));
+        }
+      } else if (type.has_value() && type.value() == KeyEncoding::PKCS8) {
+        auto private_config = GetPrivateKeyEncodingConfig(actualFormat, type.value());
+        if (passphrase.has_value()) {
+          auto& passphrase_ptr = passphrase.value();
+          private_config.passphrase =
+              std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+        }
+        auto res = ncrypto::EVPKeyPointer::TryParsePrivateKey(private_config, buffer);
+        if (res) {
+          return CreateAsymmetric(KeyType::PRIVATE, std::move(res.value));
+        }
+      } else {
+        // If no encoding type specified, try both SPKI and PKCS8. Clear the OpenSSL error
+        // queue between attempts so a failed first parse doesn't taint ncrypto's
+        // post-parse ERR_peek_error() check on the second.
+        ERR_clear_error();
+        auto public_config = GetPublicKeyEncodingConfig(actualFormat, KeyEncoding::SPKI);
+        auto public_res = ncrypto::EVPKeyPointer::TryParsePublicKey(public_config, buffer);
+        if (public_res) {
+          return CreateAsymmetric(KeyType::PUBLIC, std::move(public_res.value));
+        }
+
+        ERR_clear_error();
+        auto private_config = GetPrivateKeyEncodingConfig(actualFormat, KeyEncoding::PKCS8);
+        if (passphrase.has_value()) {
+          auto& passphrase_ptr = passphrase.value();
+          private_config.passphrase =
+              std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+        }
+        auto private_res = ncrypto::EVPKeyPointer::TryParsePrivateKey(private_config, buffer);
+        if (private_res) {
+          return CreateAsymmetric(KeyType::PRIVATE, std::move(private_res.value));
+        }
+        if (private_res.error.has_value() && private_res.error.value() == ncrypto::EVPKeyPointer::PKParseError::NEED_PASSPHRASE) {
+          throw std::runtime_error("Passphrase required for encrypted key");
+        }
+        if (!passphrase.has_value() && private_res.openssl_error.has_value() &&
+            ERR_GET_REASON(private_res.openssl_error.value()) == ERR_R_INTERRUPTED_OR_CANCELLED) {
+          throw std::runtime_error("Passphrase required for encrypted key");
+        }
+      }
+      throw std::runtime_error("Failed to read DER asymmetric key");
+    }
+  }
+
+  throw std::runtime_error("Unsupported key format for GetPublicOrPrivateKey. Only PEM and DER are supported.");
+}
+
+KeyObjectData KeyObjectData::GetPrivateKey(std::shared_ptr<ArrayBuffer> key, std::optional<KFormatType> format,
+                                           std::optional<KeyEncoding> type, const std::optional<std::shared_ptr<ArrayBuffer>>& passphrase,
+                                           bool /* isPublic */) {
+  // Check if key size fits in int32_t without using double conversion
+  if (key->size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    std::string error_msg = "key is too big (int32): size=" + std::to_string(key->size()) +
+                            ", max_int32=" + std::to_string(std::numeric_limits<int32_t>::max());
+    throw std::runtime_error(error_msg);
+  }
+
+  // If no format is specified, assume DER format for binary data
+  KFormatType actualFormat = format.has_value() ? format.value() : KFormatType::DER;
+
+  if (actualFormat == KFormatType::PEM || actualFormat == KFormatType::DER) {
+    auto buffer = ncrypto::Buffer<const unsigned char>{key->data(), key->size()};
+
+    if (actualFormat == KFormatType::PEM) {
+      return TryParsePrivateKey(key, format, type, passphrase);
+    } else if (actualFormat == KFormatType::DER) {
+      // Try the specified encoding first, or PKCS8 as default
+      KeyEncoding primaryEncoding = type.value_or(KeyEncoding::PKCS8);
+      auto private_config = GetPrivateKeyEncodingConfig(actualFormat, primaryEncoding);
+      if (passphrase.has_value()) {
+        auto& passphrase_ptr = passphrase.value();
+        private_config.passphrase =
+            std::make_optional(ncrypto::DataPointer::Copy(ncrypto::Buffer<const void>{passphrase_ptr->data(), passphrase_ptr->size()}));
+      }
+
+      // Clear any existing OpenSSL errors before parsing
+      ERR_clear_error();
+
+      auto res = ncrypto::EVPKeyPointer::TryParsePrivateKey(private_config, buffer);
+      if (res) {
+        return CreateAsymmetric(KeyType::PRIVATE, std::move(res.value));
+      }
+      if (res.error.has_value() && res.error.value() == ncrypto::EVPKeyPointer::PKParseError::NEED_PASSPHRASE) {
+        throw std::runtime_error("Passphrase required for encrypted key");
+      }
+
+      // If no specific encoding was provided, try other encodings as fallback.
+      // SEC1/PKCS1 DER are never encrypted, so passphrase is irrelevant here.
+      if (!type.has_value()) {
+        std::vector<KeyEncoding> fallbackEncodings = {KeyEncoding::SEC1, KeyEncoding::PKCS1};
+        for (auto encoding : fallbackEncodings) {
+          auto config = GetPrivateKeyEncodingConfig(actualFormat, encoding);
+          auto fallback_res = ncrypto::EVPKeyPointer::TryParsePrivateKey(config, buffer);
+          if (fallback_res) {
+            return CreateAsymmetric(KeyType::PRIVATE, std::move(fallback_res.value));
+          }
+        }
+      }
+
+      throw std::runtime_error("Failed to read DER private key");
+    }
+  }
+
+  throw std::runtime_error("Unsupported key format for GetPrivateKey. Only PEM and DER are supported.");
+}
+
+} // namespace margelo::nitro::node

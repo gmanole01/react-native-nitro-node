@@ -23,11 +23,9 @@ if(WIN32)
     endif(MSVC)
 endif()
 
-target_include_directories(openssl-impl PRIVATE
-    ${CMAKE_SOURCE_DIR}/../deps/openssl/include
-)
-
+# react-native-nitro-node's OpenSSL: the openssl-static prefab, found by
+# android/CMakeLists.txt
 target_link_libraries(openssl-impl PRIVATE
-    ${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libssl.a
-    ${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libcrypto.a
+    opensslstatic::ssl
+    opensslstatic::crypto
 )

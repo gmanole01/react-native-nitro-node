@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, running on a real libuv event loop.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `events` · `stream` · `timers` · `querystring` · `buffer` · `os` · `path` · `process`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `crypto` · `events` · `stream` · `timers` · `querystring` · `buffer` · `os` · `path` · `process`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -37,6 +37,7 @@ Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js'
 - 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are backed by libuv `uv_tcp_t` handles, not by a WebSocket or a platform HTTP stack.
 - 🌐 **HTTP client and server:** an `http` module with streaming bodies, chunked encoding, keep-alive and upgrade/CONNECT events.
 - 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, with certificate verification against the system's trust store, SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
+- 🔑 **Crypto:** Node's `crypto` (hashes, HMAC, ciphers, key pairs, sign/verify, KDFs, random, X.509) and WebCrypto's `subtle`, on **OpenSSL 3**, ported from [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto).
 - 📁 **File system:** `fs` with files, file descriptors, directories, `stat` and `statfs`, in callback and `*Sync` forms. The callback forms run off the JS thread.
 - ⏱️ **Timers that keep running in the background:** `setTimeout`, `setInterval` and `setImmediate` run on the libuv loop, so they go on while React Native's own timers are paused. `process.nextTick` and the other modules use them too.
 - 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` are powered by **[c-ares](https://c-ares.org)**, which Node also uses.
@@ -59,7 +60,9 @@ Then install the native code:
 cd ios && pod install
 ```
 
-Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt with the package for both platforms, so there is nothing else to install.
+Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt, so there is nothing else to install: on iOS, `pod install` downloads react-native-quick-crypto's static build, and on Android it's the [`openssl-static`](https://central.sonatype.com/artifact/io.github.ronickg/openssl-static) Maven package.
+
+The XSalsa20 ciphers of `crypto` need [libsodium](https://libsodium.org), which is left out by default. To build it in, set `SODIUM_ENABLED=1` when you run `pod install`, and `sodiumEnabled=true` in your app's `android/gradle.properties`.
 
 ### Metro
 
@@ -97,7 +100,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `dns`, `events`, `fs`, `http`, `https`, `net`, `os`, `path`, `process`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `https`, `net`, `os`, `path`, `process`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -138,6 +141,7 @@ import tls from 'react-native-nitro-node/tls';
 import dns from 'react-native-nitro-node/dns';
 import http from 'react-native-nitro-node/http';
 import https from 'react-native-nitro-node/https';
+import crypto from 'react-native-nitro-node/crypto';
 import { EventEmitter } from 'react-native-nitro-node/events';
 import { Readable, pipeline } from 'react-native-nitro-node/stream';
 import { setTimeout, setImmediate } from 'react-native-nitro-node/timers';
@@ -362,6 +366,32 @@ dns.resolve4('example.com', (err, addresses) => {
 dns.setDefaultTimeout(5000);
 ```
 
+### Crypto
+
+```ts
+import crypto, { createHash, randomBytes, subtle } from 'react-native-nitro-node/crypto';
+
+createHash('sha256').update('abc').digest('hex');
+
+const key = randomBytes(32);
+const iv = randomBytes(16);
+const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+const encrypted = Buffer.concat([cipher.update('secret', 'utf8'), cipher.final()]);
+
+const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+const signature = crypto.sign(null, Buffer.from('data'), privateKey);
+
+const digest = await subtle.digest('SHA-256', Buffer.from('abc'));
+```
+
+To make `global.crypto` (and `global.Buffer`) this module, for packages that look for the Web Crypto API there, call `install()` once at startup:
+
+```ts
+import { install } from 'react-native-nitro-node/crypto';
+
+install();
+```
+
 ### Errors
 
 Errors look like Node's, so you can reuse the same error-handling code:
@@ -463,6 +493,31 @@ dns.lookup('nope.invalid', (err) => {
 | `ref()` / `unref()` | ✅ | Accepted, but no effect: an app has no process exit for a timer to hold up |
 | `timers/promises` | ❌ | Planned |
 
+### `crypto`
+
+The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) implementation, so its [coverage](https://github.com/margelo/react-native-quick-crypto/blob/main/docs/data/coverage.ts) applies.
+
+| API | Status | Notes |
+|---|:---:|---|
+| `createHash()` / `hash()` / `getHashes()` | ✅ | OpenSSL's digests, including SHA-3, SHAKE and BLAKE2; also `blake3`, `turboshake`, `kmac` |
+| `createHmac()` | ✅ | |
+| `createCipheriv()` / `createDecipheriv()` / `getCiphers()` | ✅ | AES (CBC, CTR, GCM, CCM, OCB, …), ChaCha20 and ChaCha20-Poly1305, XChaCha20-Poly1305. XSalsa20 and XSalsa20-Poly1305 only with libsodium, see [Installation](#-installation) |
+| `publicEncrypt()` / `privateDecrypt()` / `privateEncrypt()` / `publicDecrypt()` | ✅ | |
+| `generateKeyPair()` / `generateKeyPairSync()` / `generateKey()` | ✅ | RSA, RSA-PSS, DSA, EC, Ed25519/Ed448, X25519/X448, DH, ML-DSA, ML-KEM, SLH-DSA |
+| `createPrivateKey()` / `createPublicKey()` / `createSecretKey()` / `KeyObject` | ✅ | PEM, DER and JWK |
+| `sign()` / `verify()` / `createSign()` / `createVerify()` | ✅ | |
+| `createDiffieHellman()` / `getDiffieHellman()` / `createECDH()` / `diffieHellman()` | ✅ | |
+| `pbkdf2()` / `scrypt()` / `hkdf()` / `argon2()` (+ `Sync`) | ✅ | |
+| `randomBytes()` / `randomFill()` / `randomInt()` / `randomUUID()` / `getRandomValues()` | ✅ | |
+| `generatePrime()` / `checkPrime()` (+ `Sync`) | ✅ | |
+| `X509Certificate` / `Certificate` (SPKAC) | ✅ | |
+| `timingSafeEqual()` / `getCurves()` / `constants` | ✅ | |
+| `subtle` (WebCrypto) | 🟡 | `digest`, `encrypt`/`decrypt`, `sign`/`verify`, `deriveBits`/`deriveKey`, `generateKey`, `importKey`/`exportKey` (some algorithms support only some formats), `wrapKey`/`unwrapKey` |
+| `install()` | ✅ | Not in Node: sets `global.crypto` and `global.Buffer` |
+| `setFips()` / `getFips()` / `setEngine()` / `secureHeapUsed()` | ❌ | |
+
+Callbacks are called on the library's `process.nextTick`, so they also arrive while the app is in the background.
+
 ### `events`, `stream`, `querystring`, `buffer`, `os`, `path`
 
 | API | Status | Notes |
@@ -523,6 +578,7 @@ flowchart TB
 - **Timers** are `uv_timer_t` handles on the loop thread, and immediates a `uv_check_t` that runs after each I/O phase, as in Node. JavaScript keeps the timers' callbacks and asks the loop to wake it.
 - **fs** calls go straight to POSIX. Every call has two native versions: the `*Sync` forms run on the JS thread, and the callback forms run on Nitro's thread pool, so they never block JavaScript.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
+- **crypto** is [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto)'s implementation: C++ HybridObjects over OpenSSL (the same OpenSSL 3.6 as TLS) and Node's [ncrypto](https://github.com/nodejs/ncrypto), with [simdutf](https://github.com/simdutf/simdutf) for base64 and hex. Most calls run on the JS thread; the slow ones, such as key generation and key derivation, also have asynchronous forms that run on Nitro's thread pool.
 - **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
 
 ## 🔐 Security notes
@@ -538,7 +594,7 @@ Know the limits:
 > [!NOTE]
 > - **Android: only the system's CA certificates count.** User-installed CAs, your app's [Network Security Config](https://developer.android.com/privacy-and-security/security-config) and its certificate pinning do not apply to this library's connections, and certificates are not checked for revocation.
 > - **Errors are not as detailed as Node's.** A refused certificate fails with `certificate verify failed`, without Node's codes such as `CERT_HAS_EXPIRED` or `ERR_TLS_CERT_ALTNAME_INVALID`.
-> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. On iOS, linking it next to another library that bundles its own OpenSSL can fail with duplicate symbols.
+> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. It stays separate from any other OpenSSL in your app: on iOS its symbols are renamed (`rnqc_*`), on Android they are kept out of the library's exported symbols. The exception is react-native-quick-crypto, which ships the same iOS build: with both installed, the app links one copy.
 
 ## 🗺️ Roadmap
 
@@ -572,6 +628,7 @@ Know the limits:
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
+- [x] `crypto`: Node's API and WebCrypto's `subtle`, ported from react-native-quick-crypto
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
@@ -580,7 +637,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `timers` and `process`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `timers` and `process`, `crypto`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init
@@ -605,9 +662,13 @@ Then rebuild the example app to try your change.
 - [c-ares](https://c-ares.org): asynchronous DNS resolution
 - [OpenSSL](https://www.openssl.org): the TLS implementation, licensed under the Apache License 2.0
 - [tlsuv](https://github.com/openziti/tlsuv) by NetFoundry: the TLS engine layer over OpenSSL, licensed under the MIT License
+- [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) by Margelo: the `crypto` implementation, licensed under the MIT License
+- [ncrypto](https://github.com/nodejs/ncrypto) (Node.js's OpenSSL wrapper), [simdutf](https://github.com/simdutf/simdutf), [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) and [fastpbkdf2](https://github.com/ctz/fastpbkdf2): used by `crypto`
 - [Nitro Modules](https://nitro.margelo.com) by Margelo: the fastest way to build native modules for React Native
 - [Node.js](https://nodejs.org): for the APIs this library follows
 
 ## 📄 License
 
 [MIT](./LICENSE) © George Manole
+
+The third-party code this library contains or builds with, and its licenses, are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

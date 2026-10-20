@@ -33,6 +33,36 @@ target_sources(
   # Autolinking Setup
   ../nitrogen/generated/android/NitroNodeOnLoad.cpp
   # Shared Nitrogen C++ sources
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoArgon2Spec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoBlake3Spec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoCertificateSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoCipherSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoCipherFactorySpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoDhKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoDiffieHellmanSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoDsaKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoECDHSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoEcKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoEdKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoHashSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoHkdfSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoHmacSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoKeyObjectHandleSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoKmacSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoMlDsaKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoMlKemKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoPbkdf2Spec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoPrimeSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoRandomSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoRsaCipherSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoRsaKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoScryptSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoSignHandleSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoVerifyHandleSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoSlhDsaKeyPairSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoTurboShakeSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoUtilsSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoX509CertificateHandleSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeNetSocketSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeNetServerSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsSocketSpec.cpp

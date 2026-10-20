@@ -1,0 +1,146 @@
+import { NitroModules } from 'react-native-nitro-modules';
+import { Buffer } from 'buffer';
+import { KeyObject, PublicKeyObject, PrivateKeyObject } from './keys/classes';
+import type { NitroNodeCryptoDsaKeyPair as DsaKeyPair } from './specs/dsaKeyPair.nitro';
+import type { GenerateKeyPairOptions, KeyPairGenConfig } from './utils/types';
+import { KFormatType, KeyEncoding } from './utils';
+
+export class Dsa {
+  native: DsaKeyPair;
+
+  constructor(modulusLength: number, divisorLength?: number) {
+    this.native = NitroModules.createHybridObject<DsaKeyPair>('NitroNodeCryptoDsaKeyPair');
+    this.native.setModulusLength(modulusLength);
+    if (divisorLength !== undefined && divisorLength >= 0) {
+      this.native.setDivisorLength(divisorLength);
+    }
+  }
+
+  async generateKeyPair(): Promise<void> {
+    await this.native.generateKeyPair();
+  }
+
+  generateKeyPairSync(): void {
+    this.native.generateKeyPairSync();
+  }
+}
+
+// FIPS 186-4 §4.2: only L = 1024, 2048, 3072 are sanctioned. NIST has
+// deprecated DSA-1024 for new applications, but we retain it for
+// interop with legacy systems and match Node's permissive default. We
+// reject anything below 1024 outright.
+const DSA_MIN_MODULUS_LENGTH = 1024;
+
+function dsa_prepareKeyGenParams(
+  options: GenerateKeyPairOptions | undefined,
+): Dsa {
+  if (!options) {
+    throw new Error('Options are required for DSA key generation');
+  }
+
+  const { modulusLength, divisorLength } = options;
+
+  if (!modulusLength || modulusLength < DSA_MIN_MODULUS_LENGTH) {
+    throw new RangeError(
+      `DSA modulusLength must be at least ${DSA_MIN_MODULUS_LENGTH} bits ` +
+        `(got ${modulusLength ?? 0})`,
+    );
+  }
+
+  return new Dsa(modulusLength, divisorLength);
+}
+
+function dsa_formatKeyPairOutput(
+  dsa: Dsa,
+  encoding: KeyPairGenConfig,
+): {
+  publicKey: PublicKeyObject | Buffer | string | ArrayBuffer;
+  privateKey: PrivateKeyObject | Buffer | string | ArrayBuffer;
+} {
+  const { publicFormat, privateFormat, cipher, passphrase } = encoding;
+
+  const publicKeyData = dsa.native.getPublicKey();
+  const privateKeyData = dsa.native.getPrivateKey();
+
+  const pub = KeyObject.createKeyObject(
+    'public',
+    publicKeyData,
+    KFormatType.DER,
+    KeyEncoding.SPKI,
+  ) as PublicKeyObject;
+
+  const priv = KeyObject.createKeyObject(
+    'private',
+    privateKeyData,
+    KFormatType.DER,
+    KeyEncoding.PKCS8,
+  ) as PrivateKeyObject;
+
+  let publicKey: PublicKeyObject | Buffer | string | ArrayBuffer;
+  let privateKey: PrivateKeyObject | Buffer | string | ArrayBuffer;
+
+  if (
+    publicFormat === 'raw-public' ||
+    privateFormat === 'raw-private' ||
+    privateFormat === 'raw-seed'
+  ) {
+    throw new Error('Raw key formats are not supported for DSA keys');
+  }
+
+  if (publicFormat === -1) {
+    publicKey = pub;
+  } else {
+    const format =
+      publicFormat === KFormatType.PEM ? KFormatType.PEM : KFormatType.DER;
+    const exported = pub.handle.exportKey(format, KeyEncoding.SPKI);
+    if (format === KFormatType.PEM) {
+      publicKey = Buffer.from(new Uint8Array(exported)).toString('utf-8');
+    } else {
+      publicKey = exported;
+    }
+  }
+
+  if (privateFormat === -1) {
+    privateKey = priv;
+  } else {
+    const format =
+      privateFormat === KFormatType.PEM ? KFormatType.PEM : KFormatType.DER;
+    const exported = priv.handle.exportKey(
+      format,
+      KeyEncoding.PKCS8,
+      cipher,
+      passphrase,
+    );
+    if (format === KFormatType.PEM) {
+      privateKey = Buffer.from(new Uint8Array(exported)).toString('utf-8');
+    } else {
+      privateKey = exported;
+    }
+  }
+
+  return { publicKey, privateKey };
+}
+
+export async function dsa_generateKeyPairNode(
+  options: GenerateKeyPairOptions | undefined,
+  encoding: KeyPairGenConfig,
+): Promise<{
+  publicKey: PublicKeyObject | Buffer | string | ArrayBuffer;
+  privateKey: PrivateKeyObject | Buffer | string | ArrayBuffer;
+}> {
+  const dsa = dsa_prepareKeyGenParams(options);
+  await dsa.generateKeyPair();
+  return dsa_formatKeyPairOutput(dsa, encoding);
+}
+
+export function dsa_generateKeyPairNodeSync(
+  options: GenerateKeyPairOptions | undefined,
+  encoding: KeyPairGenConfig,
+): {
+  publicKey: PublicKeyObject | Buffer | string | ArrayBuffer;
+  privateKey: PrivateKeyObject | Buffer | string | ArrayBuffer;
+} {
+  const dsa = dsa_prepareKeyGenParams(options);
+  dsa.generateKeyPairSync();
+  return dsa_formatKeyPairOutput(dsa, encoding);
+}

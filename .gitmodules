@@ -1,0 +1,9 @@
+[submodule "deps/blake3"]
+	path = deps/blake3
+	url = https://github.com/BLAKE3-team/BLAKE3.git
+[submodule "deps/ncrypto"]
+	path = deps/ncrypto
+	url = https://github.com/nodejs/ncrypto.git
+[submodule "deps/simdutf"]
+	path = deps/simdutf
+	url = https://github.com/simdutf/simdutf.git

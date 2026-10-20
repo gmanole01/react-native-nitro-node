@@ -1,0 +1,50 @@
+#include "HybridPbkdf2.hpp"
+#include "QuickCryptoUtils.hpp"
+
+namespace margelo::nitro::node {
+
+std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridPbkdf2::pbkdf2(const std::shared_ptr<ArrayBuffer>& password,
+                                                                            const std::shared_ptr<ArrayBuffer>& salt, double iterations,
+                                                                            double keylen, const std::string& digest) {
+  // get owned NativeArrayBuffers before passing to sync function
+  auto nativePassword = ToNativeArrayBuffer(password);
+  auto nativeSalt = ToNativeArrayBuffer(salt);
+
+  return Promise<std::shared_ptr<ArrayBuffer>>::async([this, nativePassword, nativeSalt, iterations, keylen, digest]() {
+    return this->pbkdf2Sync(nativePassword, nativeSalt, iterations, keylen, digest);
+  });
+}
+
+std::shared_ptr<ArrayBuffer> HybridPbkdf2::pbkdf2Sync(const std::shared_ptr<ArrayBuffer>& password,
+                                                      const std::shared_ptr<ArrayBuffer>& salt, double iterations, double keylen,
+                                                      const std::string& digest) {
+  size_t bufferSize = static_cast<size_t>(keylen);
+  auto out_buf = std::make_unique<uint8_t[]>(bufferSize);
+
+  // use fastpbkdf2 when possible
+  if (digest == "sha1") {
+    fastpbkdf2_hmac_sha1(password.get()->data(), password.get()->size(), salt.get()->data(), salt.get()->size(),
+                         static_cast<uint32_t>(iterations), out_buf.get(), bufferSize);
+  } else if (digest == "sha256") {
+    fastpbkdf2_hmac_sha256(password.get()->data(), password.get()->size(), salt.get()->data(), salt.get()->size(),
+                           static_cast<uint32_t>(iterations), out_buf.get(), bufferSize);
+  } else if (digest == "sha512") {
+    fastpbkdf2_hmac_sha512(password.get()->data(), password.get()->size(), salt.get()->data(), salt.get()->size(),
+                           static_cast<uint32_t>(iterations), out_buf.get(), bufferSize);
+  } else {
+    // fallback to OpenSSL
+    auto* digestByName = EVP_get_digestbyname(digest.c_str());
+    if (digestByName == nullptr) {
+      throw std::runtime_error("Invalid hash-algorithm: " + digest);
+    }
+    char* passAsCharA = reinterpret_cast<char*>(password.get()->data());
+    const unsigned char* saltAsCharA = reinterpret_cast<const unsigned char*>(salt.get()->data());
+    PKCS5_PBKDF2_HMAC(passAsCharA, password.get()->size(), saltAsCharA, salt.get()->size(), static_cast<uint32_t>(iterations), digestByName,
+                      bufferSize, out_buf.get());
+  }
+
+  uint8_t* raw_ptr = out_buf.get();
+  return std::make_shared<NativeArrayBuffer>(out_buf.release(), bufferSize, [raw_ptr]() { delete[] raw_ptr; });
+}
+
+} // namespace margelo::nitro::node

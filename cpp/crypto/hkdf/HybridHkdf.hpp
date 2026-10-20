@@ -1,0 +1,29 @@
+#pragma once
+
+#include <NitroModules/ArrayBuffer.hpp>
+#include <memory>
+#include <openssl/evp.h>
+#include <string>
+
+#include "HybridNitroNodeCryptoHkdfSpec.hpp"
+
+namespace margelo::nitro::node {
+
+using namespace facebook;
+
+class HybridHkdf : public HybridNitroNodeCryptoHkdfSpec {
+ public:
+  HybridHkdf() : HybridObject(TAG) {}
+
+ public:
+  // Methods
+  std::shared_ptr<ArrayBuffer> deriveKeySync(const std::string& algorithm, const std::shared_ptr<ArrayBuffer>& key,
+                                             const std::shared_ptr<ArrayBuffer>& salt, const std::shared_ptr<ArrayBuffer>& info,
+                                             double length, HkdfMode mode) override;
+  std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> deriveKey(const std::string& algorithm, const std::shared_ptr<ArrayBuffer>& key,
+                                                                   const std::shared_ptr<ArrayBuffer>& salt,
+                                                                   const std::shared_ptr<ArrayBuffer>& info, double length,
+                                                                   HkdfMode mode) override;
+};
+
+} // namespace margelo::nitro::node

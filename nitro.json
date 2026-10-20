@@ -1,11 +1,15 @@
 {
   "$schema": "https://nitro.margelo.com/nitro.schema.json",
-  "cxxNamespace": ["node"],
+  "cxxNamespace": [
+    "node"
+  ],
   "ios": {
     "iosModuleName": "NitroNode"
   },
   "android": {
-    "androidNamespace": ["node"],
+    "androidNamespace": [
+      "node"
+    ],
     "androidCxxLibName": "NitroNode"
   },
   "autolinking": {
@@ -66,7 +70,189 @@
         "language": "c++",
         "implementationClassName": "HybridTls"
       }
+    },
+    "NitroNodeCryptoArgon2": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridArgon2"
+      }
+    },
+    "NitroNodeCryptoBlake3": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridBlake3"
+      }
+    },
+    "NitroNodeCryptoCertificate": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridCertificate"
+      }
+    },
+    "NitroNodeCryptoCipher": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridCipher"
+      }
+    },
+    "NitroNodeCryptoCipherFactory": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridCipherFactory"
+      }
+    },
+    "NitroNodeCryptoDhKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridDhKeyPair"
+      }
+    },
+    "NitroNodeCryptoDiffieHellman": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridDiffieHellman"
+      }
+    },
+    "NitroNodeCryptoDsaKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridDsaKeyPair"
+      }
+    },
+    "NitroNodeCryptoECDH": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridECDH"
+      }
+    },
+    "NitroNodeCryptoEcKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridEcKeyPair"
+      }
+    },
+    "NitroNodeCryptoEdKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridEdKeyPair"
+      }
+    },
+    "NitroNodeCryptoHash": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridHash"
+      }
+    },
+    "NitroNodeCryptoHkdf": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridHkdf"
+      }
+    },
+    "NitroNodeCryptoHmac": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridHmac"
+      }
+    },
+    "NitroNodeCryptoKmac": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridKmac"
+      }
+    },
+    "NitroNodeCryptoKeyObjectHandle": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridKeyObjectHandle"
+      }
+    },
+    "NitroNodeCryptoMlDsaKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridMlDsaKeyPair"
+      }
+    },
+    "NitroNodeCryptoMlKemKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridMlKemKeyPair"
+      }
+    },
+    "NitroNodeCryptoSlhDsaKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridSlhDsaKeyPair"
+      }
+    },
+    "NitroNodeCryptoPbkdf2": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridPbkdf2"
+      }
+    },
+    "NitroNodeCryptoPrime": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridPrime"
+      }
+    },
+    "NitroNodeCryptoRandom": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridRandom"
+      }
+    },
+    "NitroNodeCryptoRsaCipher": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridRsaCipher"
+      }
+    },
+    "NitroNodeCryptoRsaKeyPair": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridRsaKeyPair"
+      }
+    },
+    "NitroNodeCryptoScrypt": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridScrypt"
+      }
+    },
+    "NitroNodeCryptoSignHandle": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridSignHandle"
+      }
+    },
+    "NitroNodeCryptoTurboShake": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTurboShake"
+      }
+    },
+    "NitroNodeCryptoUtils": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridUtils"
+      }
+    },
+    "NitroNodeCryptoVerifyHandle": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridVerifyHandle"
+      }
+    },
+    "NitroNodeCryptoX509CertificateHandle": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridX509Certificate"
+      }
     }
   },
-  "ignorePaths": ["**/node_modules"]
+  "ignorePaths": [
+    "**/node_modules"
+  ]
 }

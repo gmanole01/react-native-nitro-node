@@ -29,6 +29,7 @@ const path = require('path');
 /** The Node modules this library implements, each in src/<name>/index.ts. */
 const MODULES = [
   'buffer',
+  'crypto',
   'dns',
   'events',
   'fs',

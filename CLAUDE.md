@@ -1,8 +1,8 @@
 # react-native-nitro-node
 
-Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `timers`,
-`process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`) for
-React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
+Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
+`timers`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`)
+for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
 
@@ -27,11 +27,20 @@ when adding or changing an API.
   `runSync`, FIFO, never destroyed) and `CallbackSlot` (a mutex-guarded JS
   callback set from JS and called from the loop thread).
 - `cpp/<module>/Hybrid*.{hpp,cpp}`: the native side of each module.
-- `deps/`: libuv, c-ares, openssl, tlsuv (vendored).
+- `src/crypto/` (with its own specs in `src/crypto/specs/`) and `cpp/crypto/`:
+  `crypto`, ported from react-native-quick-crypto
+  (`~/Desktop/react-native-quick-crypto/packages/react-native-quick-crypto`).
+- OpenSSL 3.6.2 is react-native-quick-crypto's: on iOS the podspec downloads
+  its `QuickCryptoOpenSSL.xcframework` (symbols renamed `rnqc_*`, prefix header
+  force-included) into `ios/openssl/`; on Android the `openssl-static` prefab
+  (`opensslstatic::ssl/crypto`), which tlsuv also links
+  (`deps/tlsuv/src/openssl/CMakeLists.txt` is patched for it).
+- `deps/`: libuv, c-ares, tlsuv (vendored); blake3, ncrypto, simdutf
+  (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`,
-  `tlsTests`, `fsTests`, `timersTests`, `gcTests`, `memoryTest`), runner in
-  `testUtils.ts`.
+  `tlsTests`, `fsTests`, `timersTests`, `cryptoTests`, `gcTests`,
+  `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
 
@@ -43,6 +52,14 @@ when adding or changing an API.
   `rethrowLater`, etc. Don't propose switching for speed or Node ordering.
 - **`process`** (`src/process/process.ts`) is the npm `process` package code,
   ported by the user, on top of our timers. Keep it close to the original.
+- **`crypto`** is react-native-quick-crypto's code, adapted only where our
+  library needs it: HybridObjects named `NitroNodeCrypto<Name>` (the TS
+  imports them under their old names, `NitroNodeCryptoHash as NativeHash`;
+  the C++ classes keep theirs, `HybridHash`), C++ namespace
+  `margelo::nitro::node`, the `buffer` package instead of
+  `@craftzdog/react-native-buffer`, our `process.nextTick` and timers, no
+  `react-native-quick-base64`, no Expo plugin. Don't fix its bugs or refactor
+  it; keep it close to the original.
 - **`Symbol.dispose`** on `Timeout` / `Immediate` is set on the prototype, and
   only when `Symbol.dispose` exists. Not a class member, not `Symbol.for`.
 - **Every fs native call is a pair**: `foo` (returns a `Promise`, runs on
