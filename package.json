@@ -138,6 +138,18 @@
         "default": "./lib/commonjs/path/index.js"
       }
     },
+    "./polyfill": {
+      "source": "./src/polyfill/index.ts",
+      "react-native": "./src/polyfill/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/polyfill/index.d.ts",
+        "default": "./lib/module/polyfill/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/polyfill/index.d.ts",
+        "default": "./lib/commonjs/polyfill/index.js"
+      }
+    },
     "./process": {
       "source": "./src/process/index.ts",
       "react-native": "./src/process/index.ts",

@@ -117,6 +117,17 @@ export async function runCryptoTests(step: Step) {
     );
   });
 
+  await step('polyfill: global Buffer and crypto', async () => {
+    // index.js imports react-native-nitro-node/polyfill first
+    expectEqual('global.Buffer', (globalThis as any).Buffer, Buffer);
+    expectEqual('global.crypto', (globalThis as any).crypto, crypto);
+    // How a package uses them: from the global scope, without importing
+    const fromGlobalScope = new Function(
+      'return [Buffer.from("hi").toString("hex"), crypto.randomUUID().length, crypto.getRandomValues(new Uint8Array(8)).length]',
+    )();
+    expectEqual('Buffer, crypto.randomUUID, crypto.getRandomValues', fromGlobalScope.join(), '6869,36,8');
+  });
+
   await step('crypto: subtle.digest', async () => {
     const digest = await subtle.digest('SHA-256', Buffer.from('abc'));
     expectEqual(

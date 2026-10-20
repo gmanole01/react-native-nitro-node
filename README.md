@@ -118,6 +118,19 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 
 Metro caches what it resolves, so start it with `--reset-cache` to see every request again.
 
+### Globals
+
+Some packages use `Buffer` or `crypto` from the global scope, without importing them; Node and browsers define them, React Native doesn't. The Metro plugin can't help there, since nothing is imported. Import the polyfill first in your app's entry file:
+
+```js
+// index.js
+import 'react-native-nitro-node/polyfill';
+import { AppRegistry } from 'react-native';
+// ...
+```
+
+It sets `global.Buffer` to this library's `Buffer`, the same class `require('buffer')` gets through the Metro plugin, and `global.crypto` to its `crypto`, which has the Web Crypto API's `subtle`, `getRandomValues()` and `randomUUID()`. It has to come before the other imports: some packages read `Buffer` while their own module loads.
+
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
 
@@ -384,13 +397,7 @@ const signature = crypto.sign(null, Buffer.from('data'), privateKey);
 const digest = await subtle.digest('SHA-256', Buffer.from('abc'));
 ```
 
-To make `global.crypto` (and `global.Buffer`) this module, for packages that look for the Web Crypto API there, call `install()` once at startup:
-
-```ts
-import { install } from 'react-native-nitro-node/crypto';
-
-install();
-```
+For packages that look for `crypto` (or `Buffer`) in the global scope, see [Globals](#globals).
 
 ### Errors
 
@@ -513,7 +520,7 @@ The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-cr
 | `X509Certificate` / `Certificate` (SPKAC) | ✅ | |
 | `timingSafeEqual()` / `getCurves()` / `constants` | ✅ | |
 | `subtle` (WebCrypto) | 🟡 | `digest`, `encrypt`/`decrypt`, `sign`/`verify`, `deriveBits`/`deriveKey`, `generateKey`, `importKey`/`exportKey` (some algorithms support only some formats), `wrapKey`/`unwrapKey` |
-| `install()` | ✅ | Not in Node: sets `global.crypto` and `global.Buffer` |
+| `install()` | ✅ | Not in Node: sets `global.crypto` and `global.Buffer`, what `react-native-nitro-node/polyfill` does, see [Globals](#globals) |
 | `setFips()` / `getFips()` / `setEngine()` / `secureHeapUsed()` | ❌ | |
 
 Callbacks are called on the library's `process.nextTick`, so they also arrive while the app is in the background.

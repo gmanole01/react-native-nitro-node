@@ -22,6 +22,10 @@ when adding or changing an API.
   modules.
 - `src/<module>/<module>.ts` + `index.ts`: one folder per Node module, each a
   `package.json` export (`react-native-nitro-node/<module>`).
+- `src/polyfill/index.ts`: `react-native-nitro-node/polyfill`, a side-effect
+  import (first in the app's entry file) that sets `global.Buffer` and
+  `global.crypto` through crypto's `install()`. The example imports it first
+  in `example/index.js`.
 - `src/utils.ts`, `src/errors.ts` (`fsError`, errno → Node error codes).
 - `cpp/core/`: `UVLoop` (the single libuv loop on its own thread, `post` /
   `runSync`, FIFO, never destroyed) and `CallbackSlot` (a mutex-guarded JS
