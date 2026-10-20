@@ -4,18 +4,21 @@
  * Metro setup for react-native-nitro-node.
  *
  * Makes Node's module names (`fs`, `net`, `process`, ...) resolve to this
- * library's modules, for the app and for every package in it. Packages
- * written for Node then work as is, and the ones that defer work with
- * `process.nextTick` (readable-stream, which net and http streams are built
- * on, among them) use our nextTick: it runs on the libuv loop and keeps going
- * while the app is in the background, unlike React Native's timers.
+ * library's modules in the app's dependencies. Packages written for Node then
+ * work as is, and the ones that defer work with `process.nextTick`
+ * (readable-stream, which net and http streams are built on, among them) use
+ * our nextTick: it runs on the libuv loop and keeps going while the app is in
+ * the background, unlike React Native's timers.
  *
  *   const { withNitroNode } = require('react-native-nitro-node/metro');
  *   module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config));
  *
- * To redirect only some of them:
+ * The app's own code is left alone by default: there, TypeScript would type
+ * `import fs from 'fs'` as Node's fs anyway, so importing
+ * 'react-native-nitro-node/fs' is the clearer way. To redirect it too, and
+ * to redirect only some modules:
  *
- *   withNitroNode(config, { modules: ['process', 'timers'] });
+ *   withNitroNode(config, { includeAppCode: true, modules: ['process', 'timers'] });
  */
 
 const path = require('path');
@@ -72,14 +75,26 @@ function isInsidePackage(file, pkg) {
 }
 
 /**
+ * Whether a file belongs to one of the app's dependencies: whether it is in a
+ * node_modules folder. Packages of a monorepo that Metro reaches through a
+ * symlink have their real path, outside node_modules, and so count as the
+ * app's code.
+ */
+function isDependency(file) {
+  return file.includes(`${path.sep}node_modules${path.sep}`);
+}
+
+/**
  * Returns `config` with its resolver sending Node module names to this
  * library. Any resolveRequest already in `config` still handles everything
  * else.
  *
  * @template {import('metro-config').MetroConfig} T
  * @param {T} config
- * @param {{ modules?: string[] }} [options]
+ * @param {{ modules?: string[], includeAppCode?: boolean }} [options]
  *   `modules`: the names to redirect, from `MODULES`. Defaults to all of them.
+ *   `includeAppCode`: redirect them in the app's own code too, not only in
+ *   its dependencies. Defaults to false.
  * @returns {T}
  */
 function withNitroNode(config, options = {}) {
@@ -92,6 +107,8 @@ function withNitroNode(config, options = {}) {
       );
     }
   }
+
+  const includeAppCode = options.includeAppCode === true;
 
   const resolver = config.resolver ?? {};
   const previous = resolver.resolveRequest;
@@ -106,6 +123,7 @@ function withNitroNode(config, options = {}) {
         if (
           name !== null &&
           modules.has(name) &&
+          (includeAppCode || isDependency(from)) &&
           !OWN_CODE.some((dir) => from.startsWith(dir)) &&
           !(
             name in WRAPPED_PACKAGES &&
