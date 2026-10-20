@@ -14,4 +14,9 @@ const config = {
   watchFolders: [root],
 };
 
-module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config));
+module.exports = withNitroNode(
+  mergeConfig(getDefaultConfig(__dirname), config),
+  {
+    debug: true,
+  },
+);
