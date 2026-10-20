@@ -75,9 +75,19 @@ const config = {};
 module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config));
 ```
 
-It makes Node's module names resolve to this library, for your code and for every package you use: `fs`, `net`, `process` and the rest, also as `node:fs` and `fs/`. Packages written for Node then work as they are.
+It makes Node's module names resolve to this library in the packages you use: `fs`, `net`, `process` and the rest, also as `node:fs` and `fs/`. Packages written for Node then work as they are.
 
 It matters most for `process`. Streams (and so sockets and HTTP bodies) defer their events with `process.nextTick` from the `process` npm package, which runs on React Native's timers, and React Native pauses those while the app is in the background. This library's `nextTick` runs on its own libuv timers, which keep going. Without the redirect everything works while the app is in the foreground, but stream events such as `'end'`, `'finish'` and `'close'` wait until the app comes back.
+
+Your own code is left alone: there, import the library's modules by their own names, `react-native-nitro-node/fs` and so on. TypeScript can't follow the redirect: it types `import fs from 'fs'` as Node's `fs` (from `@types/node`, which comes with the stream types), so your code would compile against functions this library doesn't have yet. To redirect your code too, set `includeAppCode`:
+
+```js
+module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config), {
+  includeAppCode: true,
+});
+```
+
+A package counts as a dependency when its files are in a `node_modules` folder. In a monorepo, packages that Metro reaches through a symlink (workspaces) have their real path, outside `node_modules`, so they count as your code.
 
 To redirect only some modules, list them:
 
@@ -88,6 +98,22 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 ```
 
 The names are `buffer`, `dns`, `events`, `fs`, `http`, `https`, `net`, `os`, `path`, `process`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+
+To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
+
+```js
+module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config), {
+  debug: true,
+});
+```
+
+```
+[withNitroNode] redirecting buffer, dns, events, fs, ... in dependencies
+[withNitroNode] node_modules/readable-stream/lib/internal/streams/end-of-stream.js: 'process/' → node_modules/react-native-nitro-node/src/process/index.ts
+[withNitroNode] App.tsx: 'process' left alone (app code, see `includeAppCode`) → node_modules/process/browser.js
+```
+
+Metro caches what it resolves, so start it with `--reset-cache` to see every request again.
 
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
@@ -544,7 +570,7 @@ Know the limits:
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
 - [x] `events`, `stream` and `querystring` entry points
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
-- [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library
+- [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` (`nextTick`) helpers
@@ -554,9 +580,10 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, memory and GC) on a device or simulator:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `timers` and `process`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
+git submodule update --init
 yarn
 cd example
 yarn ios      # or: yarn android
