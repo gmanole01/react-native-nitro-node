@@ -143,20 +143,25 @@ export async function runTimersTests(step: Step) {
   });
 
   await step('Timeout: refresh(), close(), hasRef()', async () => {
+    // delay() is React Native's setTimeout, which runs late when the JS thread
+    // is busy: the margins leave it 200 ms, and the labels say how late it was
     let runs = 0;
-    const timer = setTimeout(() => runs++, 60);
-    await delay(40);
-    timer.refresh(); // now due 60 ms from here
-    await delay(40);
-    expectEqual('not yet, after refresh()', runs, 0);
-    await delay(80);
-    expectEqual('fired once', runs, 1);
+    const start = Date.now();
+    const since = () => `${Date.now() - start} ms`;
+    const timer = setTimeout(() => runs++, 300);
+    await delay(100);
+    timer.refresh(); // now due 300 ms from here
+    const refreshedAt = since();
+    await delay(100);
+    expectEqual(`not yet, after refresh() at ${refreshedAt}, checked at ${since()}`, runs, 0);
+    await delay(400);
+    expectEqual(`fired once, checked at ${since()}`, runs, 1);
     timer.refresh(); // runs it again
-    await delay(120);
-    expectEqual('ran again after refresh()', runs, 2);
+    await delay(500);
+    expectEqual(`ran again after refresh(), checked at ${since()}`, runs, 2);
     timer.close();
     timer.refresh();
-    await delay(120);
+    await delay(500);
     expectEqual('nothing after close()', runs, 2);
 
     const id = +timer;
