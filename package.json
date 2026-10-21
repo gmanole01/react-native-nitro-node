@@ -1,6 +1,6 @@
 {
   "name": "react-native-nitro-node",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Node.js core modules (fs, net, tls, dns, http, https, buffer, os, path, process) for React Native, powered by Nitro Modules",
   "license": "MIT",
   "author": "George Manole",
