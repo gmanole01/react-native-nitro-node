@@ -6,6 +6,7 @@ import process from '../process';
 import { setTimeout, clearTimeout } from '../timers';
 import type { Timeout } from '../timers';
 import * as net from '../net';
+import * as tls from '../tls';
 import type { AddressInfo, BufferEncoding, ErrnoException } from '../types';
 
 /** Node's http.IncomingHttpHeaders: header names are lower case. */
@@ -716,7 +717,7 @@ export class ServerResponse extends OutgoingMessage {
 }
 
 // Typed event listeners, declared only (they are EventEmitter's methods).
-interface Server {
+export interface Server {
   on<E extends keyof ServerEventMap>(
     event: E,
     listener: ServerEventMap[E],
@@ -750,7 +751,7 @@ interface Server {
   ): this;
 }
 
-class Server extends EventEmitter {
+export class Server extends EventEmitter {
   private _netServer: net.Server;
   private _httpConnections: Set<net.Socket> = new Set<net.Socket>();
 
@@ -1103,40 +1104,360 @@ export function createServer(
   return new Server(options as ServerOptions, requestListener);
 }
 
-export { Server };
+interface AgentOptions {
+  keepAlive?: boolean;
+  keepAliveMsecs?: number;
+  maxSockets?: number;
+  maxTotalSockets?: number;
+  maxFreeSockets?: number;
+  scheduling?: 'fifo' | 'lifo';
+  timeout?: number;
+  maxCachedSessions?: number;
+}
 
-// @TODO: Agent
-export class Agent extends EventEmitter {
-  constructor() {
+class Agent extends EventEmitter {
+  public maxSockets: number = Infinity;
+  public maxTotalSockets: number = Infinity;
+  public maxFreeSockets: number = 256;
+  public keepAlive: boolean = false;
+  public keepAliveMsecs: number = 1000;
+  public maxCachedSessions: number = 100;
+  public scheduling: 'fifo' | 'lifo' = 'lifo';
+
+  public requests: Record<string, ClientRequest[]> = {};
+  public sockets: Record<string, net.Socket[]> = {};
+  public freeSockets: Record<string, net.Socket[]> = {};
+  private _totalSockets: number = 0;
+  public proxy: string | null = null;
+
+  /**
+   * Gets the proxy URL for the given request options.
+   * Checks HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables.
+   *
+   * @param options Request options to determine if proxy should be used
+   * @returns Proxy URL or null if no proxy should be used
+   */
+  protected getProxy(options: RequestOptions): string | null {
+    // If explicitly set on agent, use that
+    if (this.proxy) {
+      return this.proxy;
+    }
+
+    // Check environment variables (React Native may not have process.env)
+    const env =
+      typeof process !== 'undefined' && process.env ? process.env : {};
+    const isHttps = options.protocol === 'https:';
+    const host = options.hostname || options.host || 'localhost';
+
+    // Check NO_PROXY first
+    const noProxy = env.NO_PROXY || env.no_proxy;
+    if (noProxy) {
+      const noProxyList = noProxy.split(',').map((s) => s.trim().toLowerCase());
+      const hostLower = host.toLowerCase();
+      for (const pattern of noProxyList) {
+        if (pattern === '*') return null;
+        if (pattern.startsWith('.') && hostLower.endsWith(pattern)) return null;
+        if (hostLower === pattern) return null;
+        if (hostLower.endsWith('.' + pattern)) return null;
+      }
+    }
+
+    // Get proxy URL based on protocol
+    const proxyUrl = isHttps
+      ? env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy
+      : env.HTTP_PROXY || env.http_proxy;
+
+    return proxyUrl || null;
+  }
+
+  constructor(options?: AgentOptions) {
     super();
+    if (options?.maxSockets) {
+      this.maxSockets = options.maxSockets;
+    }
+    if (options?.maxTotalSockets) {
+      this.maxTotalSockets = options.maxTotalSockets;
+    }
+    if (options?.maxFreeSockets) {
+      this.maxFreeSockets = options.maxFreeSockets;
+    }
+    if (options?.keepAlive) {
+      this.keepAlive = options.keepAlive;
+    }
+    if (options?.keepAliveMsecs) {
+      this.keepAliveMsecs = options.keepAliveMsecs;
+    }
+    if (options?.scheduling) {
+      this.scheduling = options.scheduling;
+    }
+    if (options?.maxCachedSessions !== undefined) {
+      this.maxCachedSessions = options.maxCachedSessions;
+    }
+  }
+
+  public getName(options: RequestOptions): string {
+    let name = `${options.host || options.hostname || 'localhost'}:${
+      options.port || (options.protocol === 'https:' ? 443 : 80)
+    }:`;
+    if (options.localAddress) name += `${options.localAddress}:`;
+    if (options.family) name += `${options.family}:`;
+    return name;
+  }
+
+  public addRequest(req: ClientRequest, options: RequestOptions) {
+    const name = this.getName(options);
+
+    // 1. Check if there's an idle socket in freeSockets
+    if (this.freeSockets[name] && this.freeSockets[name].length > 0) {
+      const socket =
+        this.scheduling === 'lifo'
+          ? this.freeSockets[name].pop()!
+          : this.freeSockets[name].shift()!;
+
+      if (this.freeSockets[name].length === 0) delete this.freeSockets[name];
+
+      // 取出即取消空闲销毁定时器（回池时设的，见 releaseSocket）
+      if ((socket as any)._agentIdleTimer) {
+        clearTimeout((socket as any)._agentIdleTimer);
+        delete (socket as any)._agentIdleTimer;
+      }
+
+      // Re-use socket
+      if (!this.sockets[name]) this.sockets[name] = [];
+      this.sockets[name].push(socket);
+
+      // 必须走 reuseSocket()：它会先摘掉 releaseSocket 留下的 _agentOnClose 监听。
+      // 否则那条陈旧监听会在 socket 之后关闭时再 _removeSocket 一次，把计数改坏（TS-M2）。
+      this.reuseSocket(socket, req);
+      return;
+    }
+
+    // 2. Check if we can create a new connection
+    const currentSockets = this.sockets[name]?.length || 0;
+    if (
+      currentSockets < this.maxSockets &&
+      this._totalSockets < this.maxTotalSockets
+    ) {
+      if (!this.sockets[name]) this.sockets[name] = [];
+
+      // Increment total sockets early
+      this._totalSockets++;
+
+      // ClientRequest handles connection but we signal it to proceed
+      req.onSocket(null as any);
+      return;
+    }
+
+    // 3. Queue the request
+    if (!this.requests[name]) this.requests[name] = [];
+    this.requests[name].push(req);
+  }
+
+  public createConnection(
+    options: RequestOptions,
+    callback: (err: Error | null, socket: net.Socket) => void,
+  ): net.Socket {
+    const name = this.getName(options);
+    const isHttps = options.protocol === 'https:';
+    const port = options.port || (isHttps ? 443 : 80);
+    const host = options.hostname || options.host || 'localhost';
+
+    // Build clean connection options - DO NOT pass HTTP path as it will be confused with Unix socket path
+    const connectOptions: any = {
+      host: host,
+      port: port,
+    };
+    if (isHttps) {
+      connectOptions.servername = (options as any).servername || host;
+      connectOptions.rejectUnauthorized = options.rejectUnauthorized !== false;
+      if ((options as any).ca) connectOptions.ca = (options as any).ca;
+      if ((options as any).cert) connectOptions.cert = (options as any).cert;
+      if ((options as any).key) connectOptions.key = (options as any).key;
+    }
+
+    const socket = isHttps
+      ? new tls.TlsSocket(connectOptions)
+      : new net.Socket();
+
+    // Re-emit keylog events from TLSSockets
+    if (isHttps) {
+      socket.on('keylog', (line: Buffer) => {
+        // @ts-ignore - Agent is an EventEmitter via Node-like inheritance or internal use
+        this.emit('keylog', line, socket);
+      });
+    }
+
+    let called = false;
+    const onConnected = () => {
+      if (called) return;
+      called = true;
+      callback(null, socket);
+    };
+
+    if (isHttps) {
+      (socket as tls.TlsSocket).on('secureConnect', onConnected);
+    } else {
+      socket.on('connect', onConnected);
+    }
+
+    socket.on('error', (err: Error) => {
+      if (called) {
+        // 连接已经成功过、socket 已交给请求：仍必须把它的池位还回去 ——
+        // 否则这些 socket 会永久占着 maxSockets 名额，之后所有请求都只能排在
+        // requests 队列里（TS-M1）。_removeSocket 幂等，重复调用不会多减。
+        this._removeSocket(socket, name);
+        return;
+      }
+      called = true;
+      this._totalSockets--;
+      if (this.sockets[name]) {
+        const idx = this.sockets[name].indexOf(socket);
+        if (idx !== -1) this.sockets[name].splice(idx, 1);
+      }
+      callback(err, null as any);
+    });
+
+    socket.connect(connectOptions);
+
+    if (!this.sockets[name]) this.sockets[name] = [];
+    this.sockets[name].push(socket);
+
+    return socket;
+  }
+
+  public releaseSocket(socket: net.Socket, options: RequestOptions) {
+    const name = this.getName(options);
+
+    // 防御：若这条 socket 还挂着空闲销毁定时器（理论上取出时已清），先清掉，
+    // 否则定时器晚到会去销毁一条已经在用的 socket。
+    if ((socket as any)._agentIdleTimer) {
+      clearTimeout((socket as any)._agentIdleTimer);
+      delete (socket as any)._agentIdleTimer;
+    }
+
+    // Remove from active sockets
+    if (this.sockets[name]) {
+      const idx = this.sockets[name].indexOf(socket);
+      if (idx !== -1) this.sockets[name].splice(idx, 1);
+      if (this.sockets[name].length === 0) delete this.sockets[name];
+    }
+
+    const onClose = () => {
+      this._removeSocket(socket, name);
+    };
+    socket.once('close', onClose);
+    socket.once('error', onClose);
+    (socket as any)._agentOnClose = onClose;
+
+    // Check if there are pending requests - ALWAYS reuse if something is waiting
+    if (this.requests[name] && this.requests[name].length > 0) {
+      const req = this.requests[name].shift()!;
+      if (this.requests[name].length === 0) delete this.requests[name];
+
+      if (!this.sockets[name]) this.sockets[name] = [];
+      this.sockets[name].push(socket);
+      this.reuseSocket(socket, req);
+      return;
+    }
+
+    if (this.keepAlive && this.keepSocketAlive(socket)) {
+      // Return to free pool
+      if (!this.freeSockets[name]) this.freeSockets[name] = [];
+      if (this.freeSockets[name].length < this.maxFreeSockets) {
+        // 空闲超时：keepAliveMsecs 内没被复用就销毁并归还池位（TS-M3）。
+        // 注：Node 里 keepAliveMsecs 本是 TCP keep-alive 探测间隔，这里按计划
+        // 兼作空闲上限。默认 1s 偏保守 —— 池化收益变小，但不会长期占着空闲 fd。
+        const idleTimer = setTimeout(() => {
+          delete (socket as any)._agentIdleTimer;
+          this._removeSocket(socket, name);
+          socket.destroy();
+        }, this.keepAliveMsecs);
+        (socket as any)._agentIdleTimer = idleTimer;
+        this.freeSockets[name].push(socket);
+      } else {
+        this._totalSockets--;
+        socket.end();
+      }
+    } else {
+      this._totalSockets--;
+      socket.destroy();
+    }
+  }
+
+  public keepSocketAlive(_socket: net.Socket): boolean {
+    return true;
+  }
+
+  public reuseSocket(socket: net.Socket, req: ClientRequest): void {
+    // Remove agent listeners before reusing
+    if ((socket as any)._agentOnClose) {
+      socket.removeListener('close', (socket as any)._agentOnClose);
+      socket.removeListener('error', (socket as any)._agentOnClose);
+      delete (socket as any)._agentOnClose;
+    }
+    req.onSocket(socket);
+  }
+
+  /**
+   * 把一条已经断开的 socket 从池子里摘除并归还池位计数（幂等）。
+   *
+   * ClientRequest 在 error/close 路径上调用它（TS-M1）。不做的话 sockets[name] 会
+   * 永久残留、_totalSockets 只增不减，一旦触顶所有新请求都只能排队。
+   */
+  public removeSocket(socket: net.Socket, options: RequestOptions): void {
+    this._removeSocket(socket, this.getName(options));
+  }
+
+  private _removeSocket(socket: net.Socket, name: string) {
+    if (this.sockets[name]) {
+      const idx = this.sockets[name].indexOf(socket);
+      if (idx !== -1) {
+        this.sockets[name].splice(idx, 1);
+        this._totalSockets--;
+      }
+    }
+    if (this.freeSockets[name]) {
+      const idx = this.freeSockets[name].indexOf(socket);
+      if (idx !== -1) {
+        this.freeSockets[name].splice(idx, 1);
+        this._totalSockets--;
+      }
+    }
+  }
+
+  destroy() {
+    for (const name in this.sockets) {
+      for (const socket of this.sockets[name]) {
+        socket.destroy();
+      }
+    }
+    for (const name in this.freeSockets) {
+      for (const socket of this.freeSockets[name]) {
+        socket.destroy();
+      }
+    }
   }
 }
 
+const globalAgent = new Agent();
+
 /** Node's http.RequestOptions, the supported part of it. */
 export interface RequestOptions {
-  /** 'http:' here, 'https:' for https.request. */
+  defaultPort?: number;
   protocol?: string;
-  /** Host to connect to; `hostname` wins if both are set. Default 'localhost'. */
   host?: string;
   hostname?: string;
-  /** 0 (both, the default), 4 or 6: which addresses of the host to try. */
   family?: number;
-  /** Defaults to `defaultPort`. */
   port?: number;
-  /** Defaults to 80, or 443 for https. */
-  defaultPort?: number;
-  /** Defaults to 'GET'. */
+  localAddress?: string;
+  socketPath?: string;
   method?: string;
-  /** Path and query string. Defaults to '/'. */
   path?: string;
-  headers?: OutgoingHttpHeaders;
-  /** 'user:password' for basic authentication. */
+  headers?: Record<string, any>;
   auth?: string;
-  /** Accepted for compatibility: every request uses its own connection. */
   agent?: Agent | boolean;
-  /** Calls setTimeout() on the request. */
   timeout?: number;
-  /** Replaces dns.lookup() for resolving the host. */
+  rejectUnauthorized?: boolean;
   lookup?: net.LookupFunction;
 }
 
@@ -1353,14 +1674,27 @@ export class ClientRequest extends OutgoingMessage {
       this.setTimeout(options.timeout);
     }
 
+    const agent =
+      options.agent === false
+        ? new Agent()
+        : options.agent instanceof Agent
+        ? options.agent
+        : globalAgent;
+
     process.nextTick(() => {
-      this.onSocket(null);
+      agent.addRequest(this, this._options);
     });
   }
 
-  private onSocket(socket: net.Socket | null) {
+  public onSocket(socket: net.Socket | null) {
     if (socket) {
-      throw new Error('Not yet implemented');
+      this.socket = socket;
+      this._connected = true;
+      this.emit('socket', this.socket);
+      // IMPORTANT: attach response listeners BEFORE flushing writes.
+      // If we flush first, the server may respond before we have a data listener.
+      this._attachSocketListeners();
+      this._flushPendingWrites();
     } else {
       this._connect();
     }

@@ -34,11 +34,13 @@ const MODULES = [
   'events',
   'fs',
   'http',
+  'http2',
   'https',
   'net',
   'os',
   'path',
   'process',
+  'punycode',
   'querystring',
   'stream',
   'timers',
@@ -53,6 +55,7 @@ const MODULES = [
 const WRAPPED_PACKAGES = {
   buffer: 'buffer',
   events: 'events',
+  punycode: 'punycode',
   stream: 'readable-stream',
 };
 

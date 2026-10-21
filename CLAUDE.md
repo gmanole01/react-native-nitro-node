@@ -1,8 +1,8 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`)
-for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
+`timers`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
 
@@ -22,6 +22,10 @@ when adding or changing an API.
   modules.
 - `src/<module>/<module>.ts` + `index.ts`: one folder per Node module, each a
   `package.json` export (`react-native-nitro-node/<module>`).
+- `src/http2/`: stubs only, the base classes (sessions, streams, servers,
+  `Http2ServerRequest`/`Response`) and the common functions (`connect`,
+  `createServer`, `createSecureServer`, `getDefaultSettings`, `constants`).
+  The user removed `getPackedSettings`/`getUnpackedSettings`; don't add them back.
 - `src/polyfill/index.ts`: `react-native-nitro-node/polyfill`, a side-effect
   import (first in the app's entry file) that sets `global.Buffer` and
   `global.crypto` through crypto's `install()`. The example imports it first
@@ -81,7 +85,7 @@ when adding or changing an API.
 - **Metro plugin** `withNitroNode(config, { modules?, includeAppCode? })`
   redirects Node module names (`fs`, `fs/`, `node:fs`) to `src/<name>` **only
   for files inside `node_modules`** by default; `includeAppCode: true` does the
-  app too. Never redirects our own `src/`/`lib/`, nor `buffer`/`events`/
+  app too. Never redirects our own `src/`/`lib/`, nor `buffer`/`events`/`punycode`/
   `readable-stream` asking for their own name (`WRAPPED_PACKAGES`). App code
   should import `react-native-nitro-node/<module>`: TypeScript always types
   bare `'fs'` as Node's (`@types/node` comes in via `@types/readable-stream`,

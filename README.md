@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, running on a real libuv event loop.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `crypto` · `events` · `stream` · `timers` · `querystring` · `buffer` · `os` · `path` · `process`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `events` · `stream` · `timers` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -100,7 +100,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `https`, `net`, `os`, `path`, `process`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -500,6 +500,19 @@ dns.lookup('nope.invalid', (err) => {
 | `ref()` / `unref()` | ✅ | Accepted, but no effect: an app has no process exit for a timer to hold up |
 | `timers/promises` | ❌ | Planned |
 
+### `http2`
+
+Stubs only, so packages that import `http2` (often to use it only when it's there) load: the base classes and the commonly used functions. `http2.constants` and `getDefaultSettings()` are Node's; nothing else does anything yet.
+
+| API | Status | Notes |
+|---|:---:|---|
+| `constants`, `sensitiveHeaders` | ✅ | Node 22's constants |
+| `getDefaultSettings()` | ✅ | |
+| `getPackedSettings()` / `getUnpackedSettings()` | ❌ | Not exported |
+| `connect()` / `ClientHttp2Session` / `ClientHttp2Stream` | ❌ | Stubs: the session never connects, its streams never get a response, and no event is ever emitted |
+| `createServer()` / `createSecureServer()` / `performServerHandshake()` | ❌ | Stubs: `listen()` does nothing and never calls back |
+| `Http2ServerRequest` / `Http2ServerResponse` | ❌ | Stubs; the response keeps the headers you set, and sends nothing |
+
 ### `crypto`
 
 The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) implementation, so its [coverage](https://github.com/margelo/react-native-quick-crypto/blob/main/docs/data/coverage.ts) applies.
@@ -525,13 +538,14 @@ The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-cr
 
 Callbacks are called on the library's `process.nextTick`, so they also arrive while the app is in the background.
 
-### `events`, `stream`, `querystring`, `buffer`, `os`, `path`
+### `events`, `stream`, `querystring`, `punycode`, `buffer`, `os`, `path`
 
 | API | Status | Notes |
 |---|:---:|---|
 | `events.EventEmitter` | ✅ | Re-exports the [`events`](https://www.npmjs.com/package/events) package |
 | `querystring.stringify()` / `encode()` / `escape()` | ✅ | Ported from Node: the same output, the same `ParsedUrlQueryInput` and `StringifyOptions` types |
 | `querystring.parse()` / `decode()` / `unescape()` | ❌ | Planned |
+| `punycode` | ✅ | `encode`, `decode`, `toASCII`, `toUnicode`, `ucs2` and `version`, from the [`punycode`](https://www.npmjs.com/package/punycode) package, the code Node's own (deprecated) `punycode` is |
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
 | `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
@@ -621,6 +635,7 @@ Know the limits:
 
 ### Later
 - [ ] More DNS record types: `resolveMx`, `resolveTxt`, `resolveSrv`, `resolveCname`, `resolveNs`, `reverse`
+- [ ] `http2`: client and server (only stubs for now)
 - [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
 - [ ] `url` and `util` entry points, for a fuller drop-in `node:*` replacement
@@ -631,7 +646,7 @@ Know the limits:
 - [x] `http`: client and server
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
-- [x] `events`, `stream` and `querystring` entry points
+- [x] `events`, `stream`, `querystring` and `punycode` entry points
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)

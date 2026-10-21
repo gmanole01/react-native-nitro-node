@@ -1,4 +1,5 @@
 import * as http from 'react-native-nitro-node/http';
+import http2 from 'react-native-nitro-node/http2';
 import * as net from 'react-native-nitro-node/net';
 import { Buffer } from 'buffer';
 import {
@@ -916,6 +917,28 @@ export async function runHttpTests(step: Step) {
       return '100 Continue from the listener, body echoed';
     } finally {
       await stopServer(server);
+    }
+  });
+
+  await step('http2: the stubs load and do nothing', async () => {
+    if (http2.constants.HTTP2_HEADER_PATH !== ':path' || http2.constants.NGHTTP2_CANCEL !== 8) {
+      throw new Error('constants are not Node\'s');
+    }
+    if (http2.getDefaultSettings().enablePush !== true) {
+      throw new Error('getDefaultSettings: enablePush is not true');
+    }
+    let events = 0;
+    const session = http2.connect('https://example.com', () => events++);
+    const stream = session.request({ ':path': '/' });
+    stream.on('response', () => events++);
+    stream.end();
+    const server = http2.createServer(() => events++);
+    server.listen(0, () => events++);
+    await delay(100);
+    session.close();
+    server.close();
+    if (events !== 0) {
+      throw new Error(`${events} events from the stubs`);
     }
   });
 }
