@@ -1630,8 +1630,20 @@ export class ClientRequest extends OutgoingMessage {
       );
     }
 
+    // agent: false gets an agent of its own, as in Node
+    this.agent =
+      options.agent === false
+        ? new Agent()
+        : options.agent instanceof Agent
+        ? options.agent
+        : globalAgent;
+
+    // As Node: the socket may go back to the agent when it pools (keepAlive)
+    // or limits its sockets, so queued requests can reuse it
     if (!this.hasHeader('connection')) {
-      this.setHeader('connection', 'close');
+      const keepAlive =
+        this.agent.keepAlive || Number.isFinite(this.agent.maxSockets);
+      this.setHeader('connection', keepAlive ? 'keep-alive' : 'close');
     }
 
     if (callback) {
@@ -1641,14 +1653,6 @@ export class ClientRequest extends OutgoingMessage {
     if (options.timeout !== undefined) {
       this.setTimeout(options.timeout);
     }
-
-    // agent: false gets an agent of its own, as in Node
-    this.agent =
-      options.agent === false
-        ? new Agent()
-        : options.agent instanceof Agent
-        ? options.agent
-        : globalAgent;
 
     process.nextTick(() => {
       this.agent.addRequest(this, this._options);
@@ -1889,11 +1893,14 @@ export class ClientRequest extends OutgoingMessage {
     const isHttp10 = this._res?.httpVersion === '1.0';
 
     const serverWantsClose = explicitClose || (isHttp10 && !explicitKeepAlive);
+    const weSentClose = String(this.getHeader('connection') ?? '')
+      .toLowerCase()
+      .includes('close');
 
     this._cleanupSocket();
 
     if (socket) {
-      if (serverWantsClose) {
+      if (serverWantsClose || weSentClose) {
         agent.removeSocket(socket, this._options);
         socket.destroy();
       } else {
