@@ -467,15 +467,16 @@ dns.lookup('nope.invalid', (err) => {
 | `http.createServer()` | ✅ | `keepAliveTimeout`, `requestTimeout`, `headersTimeout`, `maxHeaderSize` |
 | `http.request()` / `http.get()` | ✅ | URL strings, `URL` objects or options; `auth`, `timeout`, `lookup`, `family` |
 | `IncomingMessage` / `ServerResponse` / `ClientRequest` | ✅ | Streaming bodies, chunked transfer encoding, header helpers |
-| Server events | ✅ | `request`, `connection`, `upgrade`, `connect`, `checkContinue`, `clientError`, … |
+| Server events | ✅ | `request`, `connection`, `upgrade`, `connect`, `checkContinue`, `clientError`, … As in Node, a connection's errors go to `clientError` (without a listener the connection is closed), and a request whose client leaves emits `aborted` and `close` |
 | `http.STATUS_CODES`, `http.METHODS` | ✅ | |
-| `http.Agent` | 🟡 | Accepted for compatibility; each request currently uses its own connection |
+| `http.Agent` / `http.globalAgent` | ✅ | Connection pooling and keep-alive reuse: `keepAlive`, `keepAliveMsecs`, `maxSockets`, `maxTotalSockets`, `maxFreeSockets`, `scheduling`, `timeout`. `globalAgent` keeps connections for reuse, up to 5 s unused, as in Node 19+; `agent: false` for a connection of its own |
 
 ### `https`
 
 | API | Status | Notes |
 |---|:---:|---|
 | `https.request()` / `https.get()` | ✅ | Same as `http`, over `tls`, with `servername` and `rejectUnauthorized` |
+| `https.Agent` / `https.globalAgent` | ✅ | As `http.Agent`, over `tls`. `maxCachedSessions` is accepted, but TLS sessions are not cached yet |
 | `https.createServer()` | ❌ | Waits on `tls.createServer()` |
 
 ### `dns`
@@ -625,7 +626,6 @@ Know the limits:
 - [ ] `getPeerCertificate()`, `authorizationError` and Node's certificate error codes
 - [ ] Certificate checks for IP addresses
 - [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
-- [ ] `http.Agent` with connection pooling and keep-alive reuse
 - [ ] `dns.promises` and `fs.promises`
 - [ ] `querystring.parse()`
 - [ ] `timers/promises`
@@ -644,6 +644,7 @@ Know the limits:
 - [x] `net`: TCP client and server on libuv
 - [x] `dns`: `lookup` and `resolve4`/`resolve6` on c-ares
 - [x] `http`: client and server
+- [x] `http.Agent` / `https.Agent`: connection pooling and keep-alive reuse
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
 - [x] `events`, `stream`, `querystring` and `punycode` entry points

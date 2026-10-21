@@ -103,7 +103,9 @@ export async function runHttpTests(step: Step) {
     });
 
     try {
-      const response = await request({ port, path: '/' });
+      // agent: false: the global agent keeps connections open for reuse, as
+      // Node's does, and this checks the request that closes them
+      const response = await request({ port, path: '/', agent: false });
       log(`status ${response.status}, headers ${JSON.stringify(response.headers)}`);
 
       if (response.status !== 200) {
@@ -889,6 +891,45 @@ export async function runHttpTests(step: Step) {
     } finally {
       await stopServer(server);
     }
+  });
+
+  await step('http: a client leaving mid-request aborts the request, as Node', async log => {
+    const run = (listenForError: boolean) =>
+      new Promise<string[]>(async resolve => {
+        const events: string[] = [];
+        const { server, port } = await startServer({}, (req, res) => {
+          events.push('request');
+          req.on('aborted', () => events.push('aborted'));
+          // without an 'error' listener the request gets none, as in Node
+          if (listenForError) {
+            req.on('error', (err: any) => events.push(`error ${err.code} ${err.message}`));
+          }
+          req.on('close', async () => {
+            events.push('close');
+            // answering a client that left is dropped, not an error
+            res.end('too late');
+            await delay(100);
+            await stopServer(server);
+            resolve(events);
+          });
+        });
+        const client = await connectClient(port, 'client', log);
+        // the body never completes
+        client.write(`POST / HTTP/1.1\r\nHost: ${HOST}\r\nContent-Length: 100\r\n\r\npart`);
+        await delay(100);
+        client.destroy();
+      });
+    const withListener = await run(true);
+    const without = await run(false);
+    log(`${withListener.join(' → ')} | ${without.join(' → ')}`);
+    const expected = ['request', 'aborted', 'error ECONNRESET aborted', 'close'];
+    if (withListener.join() !== expected.join()) {
+      throw new Error(`with an error listener: ${withListener.join(' → ')}`);
+    }
+    if (without.join() !== ['request', 'aborted', 'close'].join()) {
+      throw new Error(`without one: ${without.join(' → ')}`);
+    }
+    return "'aborted' and 'close', an error only for a listener";
   });
 
   await step('http: a checkContinue listener answers with writeContinue', async log => {

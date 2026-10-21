@@ -6,7 +6,6 @@ import process from '../process';
 import { setTimeout, clearTimeout } from '../timers';
 import type { Timeout } from '../timers';
 import * as net from '../net';
-import * as tls from '../tls';
 import type { AddressInfo, BufferEncoding, ErrnoException } from '../types';
 
 /** Node's http.IncomingHttpHeaders: header names are lower case. */
@@ -228,6 +227,13 @@ export const METHODS = [
 
 function noop() {}
 
+/** Node's error for a connection that closed early: ECONNRESET. */
+function connResetError(message: string): ErrnoException {
+  const error: ErrnoException = new Error(message);
+  error.code = 'ECONNRESET';
+  return error;
+}
+
 /**
  * Closes a socket once everything written to it has been flushed. Used when a
  * connection is not going to be reused, so it does not stay open until the
@@ -266,6 +272,13 @@ export class IncomingMessage extends Readable {
   public rawHeaders: string[] = [];
 
   public complete: boolean = false;
+  /** Whether the connection closed before the whole message arrived. */
+  public aborted: boolean = false;
+  /**
+   * False once a client response's socket went back to its agent: the socket
+   * then reads for another request, so this message must not resume it.
+   */
+  _ownsSocket: boolean = true;
 
   constructor(socket: net.Socket) {
     super({ autoDestroy: false });
@@ -299,7 +312,7 @@ export class IncomingMessage extends Readable {
 
   _read(): void {
     // Restart the socket in case it was paused because our buffer was full.
-    if (this.socket && !this.socket.destroyed) {
+    if (this._ownsSocket && this.socket && !this.socket.destroyed) {
       this.socket.resume();
     }
   }
@@ -312,7 +325,11 @@ export class IncomingMessage extends Readable {
 
   public destroy(error?: Error): this {
     super.destroy(error);
-    this.socket.destroy();
+    // As Node: once the message is complete the socket may already carry the
+    // next one (an agent's keep-alive), so only an unfinished message closes it
+    if (!this.complete) {
+      this.socket.destroy();
+    }
     return this;
   }
 
@@ -338,9 +355,9 @@ export class OutgoingMessage extends Writable {
   protected _sendHeadersSent: boolean = false;
   public aborted: boolean = false;
 
-  constructor() {
+  constructor(options?: { emitClose?: boolean }) {
     // disable autoDestroy to prevent socket from being destroyed when stream ends
-    super({ autoDestroy: false });
+    super({ autoDestroy: false, ...options });
   }
 
   public destroy(error?: Error): this {
@@ -388,19 +405,24 @@ export class OutgoingMessage extends Writable {
     return Object.values(this._headerNames);
   }
 
+  /** The listener setTimeout() put on the socket, to take it off later. */
+  protected _onSocketTimeout: (() => void) | null = null;
+
   public setTimeout(ms: number, callback?: () => void): this {
-    if (this.socket) {
-      this.socket.setTimeout(ms, () => {
+    const set = (s: net.Socket) => {
+      if (this._onSocketTimeout) {
+        s.removeListener('timeout', this._onSocketTimeout);
+      }
+      this._onSocketTimeout = () => {
         this.emit('timeout');
         if (callback) callback();
-      });
+      };
+      s.setTimeout(ms, this._onSocketTimeout);
+    };
+    if (this.socket) {
+      set(this.socket);
     } else {
-      this.once('socket', (s: net.Socket) => {
-        s.setTimeout(ms, () => {
-          this.emit('timeout');
-          if (callback) callback();
-        });
-      });
+      this.once('socket', set);
     }
     return this;
   }
@@ -450,6 +472,16 @@ export class OutgoingMessage extends Writable {
       return;
     }
 
+    // As Node: what the connection can't take is dropped, and its error is
+    // reported once, by the socket ('clientError' on a server, the request's
+    // 'error' on a client). Passed on here it would also be this stream's
+    // 'error', which nobody listens to.
+    if (socket.destroyed || !socket.writable) {
+      callback();
+      return;
+    }
+    const done: WriteCallback = () => callback();
+
     if (this.chunkedEncoding) {
       const len =
         typeof chunk === 'string'
@@ -460,11 +492,11 @@ export class OutgoingMessage extends Writable {
       // Note: We don't return the backpressure status here because we are doing multiple writes
       // The final write determines the callback.
       socket.write(chunk, encoding, (err) => {
-        if (err) return callback(err);
-        socket.write(Buffer.from('\r\n'), callback);
+        if (err) return done();
+        socket.write(Buffer.from('\r\n'), done);
       });
     } else {
-      socket.write(chunk, encoding, callback);
+      socket.write(chunk, encoding, done);
     }
   }
 
@@ -1041,19 +1073,40 @@ export class Server extends EventEmitter {
       clearTimers();
       this._httpConnections.delete(socket);
       if (incoming) {
-        // the connection died in the middle of a request
-        incoming.push(null);
+        // The connection died in the middle of a request. As Node: it is
+        // aborted, and its error only goes to listeners (it would crash the
+        // app otherwise)
+        const aborted = incoming;
         incoming = null;
+        aborted.aborted = true;
+        aborted.emit('aborted');
+        aborted.destroy(
+          aborted.listenerCount('error') > 0
+            ? connResetError('aborted')
+            : undefined,
+        );
       }
     });
 
-    socket.on('error', (err: Error) => {
-      if (req) {
-        req.emit('error', err);
-      } else {
-        this.emit('error', err);
+    // As Node: a connection's error goes to 'clientError', and without a
+    // listener the connection is closed, after a 400 if nothing was answered
+    // yet. Not to the request or the server: an 'error' nobody listens to
+    // would crash the app, and a client going away is not the server's error.
+    const onSocketError = (err: ErrnoException) => {
+      socket.removeListener('error', onSocketError);
+      // later errors, from the write below or destroy(), are ignored
+      socket.on('error', noop);
+      clearTimers();
+      if (this.listenerCount('clientError') > 0) {
+        this.emit('clientError', err, socket);
+        return;
       }
-    });
+      if (socket.writable && !res?.headersSent) {
+        socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      }
+      socket.destroy(err);
+    };
+    socket.on('error', onSocketError);
   }
 
   /** Where the server listens, or null when it does not. */
@@ -1104,15 +1157,29 @@ export function createServer(
   return new Server(options as ServerOptions, requestListener);
 }
 
-interface AgentOptions {
+/** Node's http.AgentOptions. */
+export interface AgentOptions {
+  /** Keep sockets open after a response, for later requests. */
   keepAlive?: boolean;
+  /** The TCP keep-alive initial delay of kept-alive sockets. */
   keepAliveMsecs?: number;
   maxSockets?: number;
   maxTotalSockets?: number;
   maxFreeSockets?: number;
   scheduling?: 'fifo' | 'lifo';
+  /**
+   * The socket timeout: a request without its own `timeout` gets this one, and
+   * a free socket is closed after this long unused.
+   */
   timeout?: number;
-  maxCachedSessions?: number;
+}
+
+/** Stops the timer that closes a socket left unused in an agent's pool. */
+function clearIdleTimer(socket: net.Socket) {
+  if ((socket as any)._agentIdleTimer) {
+    clearTimeout((socket as any)._agentIdleTimer);
+    delete (socket as any)._agentIdleTimer;
+  }
 }
 
 export class Agent extends EventEmitter {
@@ -1121,47 +1188,19 @@ export class Agent extends EventEmitter {
   public maxFreeSockets: number = 256;
   public keepAlive: boolean = false;
   public keepAliveMsecs: number = 1000;
-  public maxCachedSessions: number = 100;
   public scheduling: 'fifo' | 'lifo' = 'lifo';
+  public options: AgentOptions;
+  public defaultPort: number = 80;
+  public protocol: string = 'http:';
 
   public requests: Record<string, ClientRequest[]> = {};
   public sockets: Record<string, net.Socket[]> = {};
   public freeSockets: Record<string, net.Socket[]> = {};
   private _totalSockets: number = 0;
-  public proxy: string | null = null;
-
-  /** The proxy for a request: `proxy`, or HTTP(S)_PROXY unless NO_PROXY matches. */
-  protected getProxy(options: RequestOptions): string | null {
-    if (this.proxy) {
-      return this.proxy;
-    }
-
-    const env =
-      typeof process !== 'undefined' && process.env ? process.env : {};
-    const isHttps = options.protocol === 'https:';
-    const host = options.hostname || options.host || 'localhost';
-
-    const noProxy = env.NO_PROXY || env.no_proxy;
-    if (noProxy) {
-      const noProxyList = noProxy.split(',').map((s) => s.trim().toLowerCase());
-      const hostLower = host.toLowerCase();
-      for (const pattern of noProxyList) {
-        if (pattern === '*') return null;
-        if (pattern.startsWith('.') && hostLower.endsWith(pattern)) return null;
-        if (hostLower === pattern) return null;
-        if (hostLower.endsWith('.' + pattern)) return null;
-      }
-    }
-
-    const proxyUrl = isHttps
-      ? env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy
-      : env.HTTP_PROXY || env.http_proxy;
-
-    return proxyUrl || null;
-  }
 
   constructor(options?: AgentOptions) {
     super();
+    this.options = { ...options };
     if (options?.maxSockets) {
       this.maxSockets = options.maxSockets;
     }
@@ -1180,17 +1219,19 @@ export class Agent extends EventEmitter {
     if (options?.scheduling) {
       this.scheduling = options.scheduling;
     }
-    if (options?.maxCachedSessions !== undefined) {
-      this.maxCachedSessions = options.maxCachedSessions;
-    }
   }
 
-  public getName(options: RequestOptions): string {
-    let name = `${options.host || options.hostname || 'localhost'}:${
-      options.port || (options.protocol === 'https:' ? 443 : 80)
-    }:`;
-    if (options.localAddress) name += `${options.localAddress}:`;
-    if (options.family) name += `${options.family}:`;
+  /** The pool a request's socket belongs to, Node's `host:port:localAddress[:family]`. */
+  public getName(options: RequestOptions = {}): string {
+    let name = options.host || 'localhost';
+    name += ':';
+    if (options.port) name += options.port;
+    name += ':';
+    if (options.localAddress) name += options.localAddress;
+    if (options.family === 4 || options.family === 6) {
+      name += `:${options.family}`;
+    }
+    if (options.socketPath) name += `:${options.socketPath}`;
     return name;
   }
 
@@ -1205,10 +1246,7 @@ export class Agent extends EventEmitter {
 
       if (this.freeSockets[name].length === 0) delete this.freeSockets[name];
 
-      if ((socket as any)._agentIdleTimer) {
-        clearTimeout((socket as any)._agentIdleTimer);
-        delete (socket as any)._agentIdleTimer;
-      }
+      clearIdleTimer(socket);
 
       if (!this.sockets[name]) this.sockets[name] = [];
       this.sockets[name].push(socket);
@@ -1224,10 +1262,7 @@ export class Agent extends EventEmitter {
       currentSockets < this.maxSockets &&
       this._totalSockets < this.maxTotalSockets
     ) {
-      if (!this.sockets[name]) this.sockets[name] = [];
-      this._totalSockets++;
-      // null: the request makes its own connection
-      req.onSocket(null as any);
+      this._connectRequest(req, name);
       return;
     }
 
@@ -1235,37 +1270,37 @@ export class Agent extends EventEmitter {
     this.requests[name].push(req);
   }
 
+  /**
+   * Opens a connection for a request, as Node's: net.createConnection(), and
+   * tls.connect() in https.Agent. A subclass may replace it.
+   */
   public createConnection(
+    options: RequestOptions,
+    callback?: () => void,
+  ): net.Socket {
+    // Not the request's `path`: net would take it for a Unix socket path
+    return net.createConnection(
+      {
+        host: options.host || 'localhost',
+        port: options.port || this.defaultPort,
+        family: options.family,
+        lookup: options.lookup,
+      },
+      callback,
+    );
+  }
+
+  /**
+   * Makes a socket for a request with createConnection() and counts it in
+   * the pool. `callback` gets it once connected (after the TLS handshake for
+   * a TLS socket).
+   */
+  public _createSocket(
     options: RequestOptions,
     callback: (err: Error | null, socket: net.Socket) => void,
   ): net.Socket {
     const name = this.getName(options);
-    const isHttps = options.protocol === 'https:';
-    const port = options.port || (isHttps ? 443 : 80);
-    const host = options.hostname || options.host || 'localhost';
-
-    // Not the request's `path`: net would take it for a Unix socket path
-    const connectOptions: any = {
-      host: host,
-      port: port,
-    };
-    if (isHttps) {
-      connectOptions.servername = (options as any).servername || host;
-      connectOptions.rejectUnauthorized = options.rejectUnauthorized !== false;
-      if ((options as any).ca) connectOptions.ca = (options as any).ca;
-      if ((options as any).cert) connectOptions.cert = (options as any).cert;
-      if ((options as any).key) connectOptions.key = (options as any).key;
-    }
-
-    const socket = isHttps
-      ? new tls.TlsSocket(connectOptions)
-      : new net.Socket();
-
-    if (isHttps) {
-      socket.on('keylog', (line: Buffer) => {
-        this.emit('keylog', line, socket);
-      });
-    }
+    const socket = this.createConnection(options);
 
     let called = false;
     const onConnected = () => {
@@ -1274,11 +1309,8 @@ export class Agent extends EventEmitter {
       callback(null, socket);
     };
 
-    if (isHttps) {
-      (socket as tls.TlsSocket).on('secureConnect', onConnected);
-    } else {
-      socket.on('connect', onConnected);
-    }
+    // A TLSSocket (https.Agent) is ready once its handshake is done
+    socket.once('encrypted' in socket ? 'secureConnect' : 'connect', onConnected);
 
     socket.on('error', (err: Error) => {
       if (called) {
@@ -1293,9 +1325,8 @@ export class Agent extends EventEmitter {
         if (idx !== -1) this.sockets[name].splice(idx, 1);
       }
       callback(err, null as any);
+      this._processQueue(name);
     });
-
-    socket.connect(connectOptions);
 
     if (!this.sockets[name]) this.sockets[name] = [];
     this.sockets[name].push(socket);
@@ -1306,10 +1337,7 @@ export class Agent extends EventEmitter {
   public releaseSocket(socket: net.Socket, options: RequestOptions) {
     const name = this.getName(options);
 
-    if ((socket as any)._agentIdleTimer) {
-      clearTimeout((socket as any)._agentIdleTimer);
-      delete (socket as any)._agentIdleTimer;
-    }
+    clearIdleTimer(socket);
 
     if (this.sockets[name]) {
       const idx = this.sockets[name].indexOf(socket);
@@ -1317,11 +1345,14 @@ export class Agent extends EventEmitter {
       if (this.sockets[name].length === 0) delete this.sockets[name];
     }
 
+    // Kept until the socket is reused, so an error while it waits in the
+    // pool (the server closing it, say) is handled
     const onClose = () => {
       this._removeSocket(socket, name);
+      socket.destroy();
     };
     socket.once('close', onClose);
-    socket.once('error', onClose);
+    socket.on('error', onClose);
     (socket as any)._agentOnClose = onClose;
 
     if (this.requests[name] && this.requests[name].length > 0) {
@@ -1337,22 +1368,27 @@ export class Agent extends EventEmitter {
     if (this.keepAlive && this.keepSocketAlive(socket)) {
       if (!this.freeSockets[name]) this.freeSockets[name] = [];
       if (this.freeSockets[name].length < this.maxFreeSockets) {
-        // Unlike Node, where keepAliveMsecs is the TCP keep-alive delay, it is
-        // also how long a free socket waits to be reused before it is closed
-        const idleTimer = setTimeout(() => {
-          delete (socket as any)._agentIdleTimer;
-          this._removeSocket(socket, name);
-          socket.destroy();
-        }, this.keepAliveMsecs);
-        (socket as any)._agentIdleTimer = idleTimer;
+        socket.setKeepAlive(true, this.keepAliveMsecs);
+        // As Node: a free socket is closed after the agent's timeout, and
+        // without one it waits until the server closes it
+        const timeout = this.options.timeout;
+        if (timeout && timeout > 0) {
+          (socket as any)._agentIdleTimer = setTimeout(() => {
+            delete (socket as any)._agentIdleTimer;
+            this._removeSocket(socket, name);
+            socket.destroy();
+          }, timeout);
+        }
         this.freeSockets[name].push(socket);
       } else {
         this._totalSockets--;
         socket.end();
+        this._processQueue(name);
       }
     } else {
       this._totalSockets--;
       socket.destroy();
+      this._processQueue(name);
     }
   }
 
@@ -1375,11 +1411,14 @@ export class Agent extends EventEmitter {
   }
 
   private _removeSocket(socket: net.Socket, name: string) {
+    clearIdleTimer(socket);
+    let removed = false;
     if (this.sockets[name]) {
       const idx = this.sockets[name].indexOf(socket);
       if (idx !== -1) {
         this.sockets[name].splice(idx, 1);
         this._totalSockets--;
+        removed = true;
       }
     }
     if (this.freeSockets[name]) {
@@ -1387,7 +1426,41 @@ export class Agent extends EventEmitter {
       if (idx !== -1) {
         this.freeSockets[name].splice(idx, 1);
         this._totalSockets--;
+        removed = true;
       }
+    }
+    if (removed) {
+      this._processQueue(name);
+    }
+  }
+
+  /** Gives `req` a new connection: the request makes it, see onSocket(). */
+  private _connectRequest(req: ClientRequest, name: string) {
+    // A destroyed request makes no connection, so it takes no place
+    if (!req.destroyed) {
+      if (!this.sockets[name]) this.sockets[name] = [];
+      this._totalSockets++;
+    }
+    req.onSocket(null);
+  }
+
+  /**
+   * Starts queued requests on new connections, as far as maxSockets and
+   * maxTotalSockets allow. `name`, whose socket just went, goes first.
+   */
+  private _processQueue(name: string) {
+    const others = Object.keys(this.requests).filter((key) => key !== name);
+    for (const key of [name, ...others]) {
+      const queue = this.requests[key];
+      if (!queue) continue;
+      while (
+        queue.length > 0 &&
+        (this.sockets[key]?.length ?? 0) < this.maxSockets &&
+        this._totalSockets < this.maxTotalSockets
+      ) {
+        this._connectRequest(queue.shift()!, key);
+      }
+      if (queue.length === 0) delete this.requests[key];
     }
   }
 
@@ -1399,13 +1472,19 @@ export class Agent extends EventEmitter {
     }
     for (const name in this.freeSockets) {
       for (const socket of this.freeSockets[name]) {
+        clearIdleTimer(socket);
         socket.destroy();
       }
     }
   }
 }
 
-export const globalAgent = new Agent();
+/** As Node's (19+): connections are kept for reuse, up to 5 s unused. */
+export const globalAgent = new Agent({
+  keepAlive: true,
+  scheduling: 'lifo',
+  timeout: 5000,
+});
 
 /** Node's http.RequestOptions, the supported part of it. */
 export interface RequestOptions {
@@ -1419,11 +1498,10 @@ export interface RequestOptions {
   socketPath?: string;
   method?: string;
   path?: string;
-  headers?: Record<string, any>;
+  headers?: OutgoingHttpHeaders;
   auth?: string;
   agent?: Agent | boolean;
   timeout?: number;
-  rejectUnauthorized?: boolean;
   lookup?: net.LookupFunction;
 }
 
@@ -1572,6 +1650,11 @@ export class ClientRequest extends OutgoingMessage {
     return 80;
   }
 
+  /** The agent of requests that don't name one; https overrides it. */
+  protected get _defaultAgent(): Agent {
+    return globalAgent;
+  }
+
   constructor(
     url: string | URLLike | RequestOptions,
     callback?: ResponseCallback,
@@ -1586,7 +1669,9 @@ export class ClientRequest extends OutgoingMessage {
     optionsOrCallback?: RequestOptions | ResponseCallback,
     responseCallback?: ResponseCallback,
   ) {
-    super();
+    // 'close' comes from the socket's handlers, after the request's
+    // 'error' as in Node, not from the stream when destroy() is called
+    super({ emitClose: false });
 
     const { options, callback } = normalizeRequestArgs(
       urlOrOptions,
@@ -1594,9 +1679,22 @@ export class ClientRequest extends OutgoingMessage {
       responseCallback,
     );
 
-    if (options.protocol && options.protocol !== this._protocol) {
+    // agent: false gets an agent of its own, as in Node
+    const defaultAgent = this._defaultAgent;
+    this.agent =
+      options.agent === false
+        ? new (defaultAgent.constructor as typeof Agent)()
+        : options.agent instanceof Agent
+        ? options.agent
+        : defaultAgent;
+
+    // As Node: the agent decides the protocol, so an http.Agent can't carry
+    // an https request
+    const expected = this.agent.protocol || this._protocol;
+    const protocol = options.protocol || this._protocol;
+    if (protocol !== expected) {
       throw new TypeError(
-        `Protocol "${options.protocol}" not supported. Expected "${this._protocol}"`,
+        `Protocol "${protocol}" not supported. Expected "${expected}"`,
       );
     }
 
@@ -1606,8 +1704,14 @@ export class ClientRequest extends OutgoingMessage {
 
     this._options = {
       ...options,
+      // The agent connects with TLS for 'https:'
+      protocol: this._protocol,
       host: this.host,
-      port: options.port ?? options.defaultPort ?? this._defaultPort,
+      port:
+        options.port ??
+        options.defaultPort ??
+        this.agent.defaultPort ??
+        this._defaultPort,
     };
 
     if (['GET', 'HEAD'].includes(this.method)) {
@@ -1630,14 +1734,6 @@ export class ClientRequest extends OutgoingMessage {
       );
     }
 
-    // agent: false gets an agent of its own, as in Node
-    this.agent =
-      options.agent === false
-        ? new Agent()
-        : options.agent instanceof Agent
-        ? options.agent
-        : globalAgent;
-
     // As Node: the socket may go back to the agent when it pools (keepAlive)
     // or limits its sockets, so queued requests can reuse it
     if (!this.hasHeader('connection')) {
@@ -1650,8 +1746,10 @@ export class ClientRequest extends OutgoingMessage {
       this.once('response', callback);
     }
 
-    if (options.timeout !== undefined) {
-      this.setTimeout(options.timeout);
+    // As Node: without its own timeout, a request gets its agent's
+    const timeout = options.timeout ?? this.agent.options?.timeout;
+    if (timeout !== undefined) {
+      this.setTimeout(timeout);
     }
 
     process.nextTick(() => {
@@ -1660,9 +1758,23 @@ export class ClientRequest extends OutgoingMessage {
   }
 
   public onSocket(socket: net.Socket | null) {
+    if (this.destroyed) {
+      // Destroyed while waiting for its socket: as Node, nothing is sent
+      if (socket) {
+        this._discardSocket(socket);
+      }
+      process.nextTick(() => {
+        if (!this.errored) {
+          this.emit('error', connResetError('socket hang up'));
+        }
+        this.emit('close');
+      });
+      return;
+    }
     if (socket) {
       this.socket = socket;
       this._connected = true;
+      this._applySocketOptions();
       this.emit('socket', this.socket);
       // Listen before writing, or the response could arrive first
       this._attachSocketListeners();
@@ -1672,45 +1784,13 @@ export class ClientRequest extends OutgoingMessage {
     }
   }
 
-  protected _createConnection(
-    options: RequestOptions,
-    callback: (err: Error | null, socket: net.Socket | null) => void,
-  ): net.Socket {
-    const socket = net.createConnection({
-      host: options.host,
-      port: options.port!,
-      family: options.family,
-      lookup: options.lookup,
-    });
-
-    let called = false;
-    function onConnect() {
-      if (called) {
-        return;
-      }
-      called = true;
-      callback(null, socket);
-    }
-    function onError(err: Error) {
-      if (called) {
-        return;
-      }
-      called = true;
-      callback(err, null);
-    }
-
-    socket.once('error', onError);
-    socket.once('connect', onConnect);
-
-    return socket;
-  }
-
   private _connect() {
     const connectCallback = (err: Error | null, socket: net.Socket | null) => {
       if (err || !socket) {
         err = err ?? new Error('No socket');
         this._failPendingWrites(err);
         this.emit('error', err);
+        this.emit('close');
         return;
       }
 
@@ -1727,7 +1807,7 @@ export class ClientRequest extends OutgoingMessage {
       this._flushPendingWrites();
     };
 
-    this.socket = this._createConnection(this._options, connectCallback);
+    this.socket = this.agent._createSocket(this._options, connectCallback);
     this._applySocketOptions();
   }
 
@@ -1812,18 +1892,24 @@ export class ClientRequest extends OutgoingMessage {
         return;
       }
 
-      self._discardSocket();
       self._cleanupSocket();
+      self._discardSocket(socket);
 
       // emit on next tick
       process.nextTick(() => {
         self.emit('error', err);
         if (res) {
-          res.emit('error', err);
+          // As Node: the error is the request's; the response is aborted, as
+          // when the socket closes (see onClose)
+          res.aborted = true;
+          res.emit('aborted');
         }
 
         self.emit('close');
         if (res) {
+          if (res.listenerCount('error') > 0) {
+            res.emit('error', connResetError('aborted'));
+          }
           res.emit('close');
         }
       });
@@ -1836,13 +1922,27 @@ export class ClientRequest extends OutgoingMessage {
         return;
       }
 
-      self._discardSocket();
       self._cleanupSocket();
+      self._discardSocket(socket);
 
       // emit on next tick
       process.nextTick(() => {
+        if (res) {
+          // As Node: a response cut off mid-body is aborted, and its error is
+          // only emitted to listeners (it would crash the app otherwise)
+          res.aborted = true;
+          res.emit('aborted');
+        } else if (!self.errored) {
+          // As Node: no response at all is an error, unless destroy(err)
+          // already reported one
+          self.emit('error', connResetError('socket hang up'));
+        }
+
         self.emit('close');
         if (res) {
+          if (res.listenerCount('error') > 0) {
+            res.emit('error', connResetError('aborted'));
+          }
           res.emit('close');
         }
       });
@@ -1859,12 +1959,14 @@ export class ClientRequest extends OutgoingMessage {
     };
   }
 
-  private _discardSocket() {
-    const socket = this.socket;
-    if (!socket) {
-      return;
-    }
+  /** Takes a socket out of the agent's pool and closes it. */
+  private _discardSocket(socket: net.Socket) {
     this.agent.removeSocket(socket, this._options);
+    // Our listeners are gone: make sure a late error is not left unhandled
+    socket.on('error', noop);
+    if (!socket.destroyed) {
+      socket.destroy();
+    }
   }
 
   private _cleanupSocket() {
@@ -1901,14 +2003,23 @@ export class ClientRequest extends OutgoingMessage {
 
     if (socket) {
       if (serverWantsClose || weSentClose) {
-        agent.removeSocket(socket, this._options);
-        socket.destroy();
+        this._discardSocket(socket);
       } else {
+        // The socket outlives this request: its timeout must not fire for the
+        // next one
+        if (this._onSocketTimeout) {
+          socket.setTimeout(0, this._onSocketTimeout);
+          this._onSocketTimeout = null;
+        }
+        // The response may have paused the socket when its buffer filled up.
+        // It has all its data now, so the socket reads for the next request.
+        if (this._res) {
+          this._res._ownsSocket = false;
+        }
+        socket.resume();
         agent.releaseSocket(socket, this._options);
       }
     }
-
-    this.emit('close');
   }
 
   private _failPendingWrites(err: Error) {

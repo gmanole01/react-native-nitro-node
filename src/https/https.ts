@@ -19,6 +19,66 @@ export interface RequestOptions extends http.RequestOptions {
 
 type ResponseCallback = (res: IncomingMessage) => void;
 
+/** Node's https.AgentOptions, the supported part of it. */
+export interface AgentOptions extends http.AgentOptions {
+  /** Accepted for compatibility: TLS sessions are not cached yet. */
+  maxCachedSessions?: number;
+}
+
+/** Node's https.Agent: an http.Agent whose connections use TLS. */
+export class Agent extends http.Agent {
+  public defaultPort: number = 443;
+  public protocol: string = 'https:';
+  public maxCachedSessions: number;
+
+  constructor(options?: AgentOptions) {
+    super(options);
+    this.maxCachedSessions = options?.maxCachedSessions ?? 100;
+  }
+
+  public createConnection(
+    options: RequestOptions,
+    callback?: () => void,
+  ): Socket {
+    return tls.connect(
+      {
+        host: options.host || 'localhost',
+        port: options.port || this.defaultPort,
+        family: options.family,
+        lookup: options.lookup,
+        // As Node's https.Agent: the host, unless one is given
+        servername: options.servername ?? options.host,
+        rejectUnauthorized: options.rejectUnauthorized,
+      },
+      callback,
+    );
+  }
+
+  /**
+   * As Node's: the TLS options that change the connection are part of the
+   * name, so connections with different ones are never shared. Only the
+   * ones this library supports can be set.
+   */
+  public getName(options: RequestOptions = {}): string {
+    let name = super.getName(options);
+    // ca, cert, clientCertEngine, ciphers, key, pfx: not supported
+    name += '::::::';
+    name += ':';
+    if (options.rejectUnauthorized !== undefined) {
+      name += options.rejectUnauthorized;
+    }
+    name += ':';
+    if (options.servername && options.servername !== options.host) {
+      name += options.servername;
+    }
+    // minVersion, maxVersion, secureProtocol, crl, honorCipherOrder,
+    // ecdhCurve, dhparam, secureOptions, sessionIdContext, sigalgs,
+    // privateKeyIdentifier, privateKeyEngine: not supported
+    name += '::::::::::::';
+    return name;
+  }
+}
+
 export class ClientRequest extends http.ClientRequest {
   constructor(url: string | URLLike | RequestOptions, callback?: ResponseCallback);
   constructor(url: string | URLLike, options: RequestOptions, callback?: ResponseCallback);
@@ -38,41 +98,17 @@ export class ClientRequest extends http.ClientRequest {
     return 443;
   }
 
-  protected _createConnection(
-    options: RequestOptions,
-    callback: (err: Error | null, socket: Socket | null) => void,
-  ): Socket {
-    const socket = tls.connect({
-      host: options.host,
-      port: options.port,
-      family: options.family,
-      lookup: options.lookup,
-      servername: options.servername,
-      rejectUnauthorized: options.rejectUnauthorized,
-    });
-
-    let called = false;
-    function onSecure() {
-      if (called) {
-        return;
-      }
-      called = true;
-      callback(null, socket);
-    }
-    function onError(err: Error) {
-      if (called) {
-        return;
-      }
-      called = true;
-      callback(err, null);
-    }
-
-    socket.once('error', onError);
-    socket.once('secureConnect', onSecure);
-
-    return socket;
+  protected get _defaultAgent(): http.Agent {
+    return globalAgent;
   }
 }
+
+/** As Node's (19+): connections are kept for reuse, up to 5 s unused. */
+export const globalAgent = new Agent({
+  keepAlive: true,
+  scheduling: 'lifo',
+  timeout: 5000,
+});
 
 /** Like http.request(), over TLS. */
 export function request(

@@ -8,6 +8,7 @@ import {
 } from './testUtils';
 import { runNetBehaviourTests, runNetTests } from './netTests';
 import { runHttpTests } from './httpTests';
+import { runAgentTests } from './agentTests';
 import { runGcTests } from './gcTests';
 import { runTlsTests } from './tlsTests';
 import { runFsTests } from './fsTests';
@@ -29,6 +30,7 @@ async function runTests(report: (result: StepResult) => void) {
   await runNetTests(step);
   await runNetBehaviourTests(step);
   await runHttpTests(step);
+  await runAgentTests(step);
   await runTlsTests(step);
   await runGcTests(step);
   await runFsTests(step);
@@ -59,12 +61,42 @@ function App(): React.JSX.Element {
   const [memoryReport, setMemoryReport] = useState<MemoryReport | null>(null);
 
   useEffect(() => {
-    https.get('https://www.google.com', response => {
-      console.log(response.statusCode);
-      response.on('data', d => {
-        console.log(d.toString('utf8'));
+    (async () => {
+      let socket: any;
+
+      let resolve: any, reject: any;
+      const p = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
       });
-    });
+
+      https.get('https://www.google.com', response => {
+        socket = response.socket;
+
+        console.log(response.statusCode);
+        response.on('data', d => {
+          console.log(d.toString('utf8'));
+        });
+        response.on('close', () => {
+          resolve();
+        });
+      });
+
+      await p;
+
+      https.get('https://www.google.com', response => {
+        const sock = response.socket;
+
+        if (socket === sock) {
+          console.log('SOCKET RESUED!!!');
+        }
+
+        console.log(response.statusCode);
+        response.on('data', d => {
+          console.log(d.toString('utf8'));
+        });
+      });
+    })();
   }, []);
 
   const run = useCallback(() => {

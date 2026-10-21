@@ -238,6 +238,40 @@ export async function runTlsTests(step: Step) {
     return `${body.length} characters`;
   }, 20000);
 
+  await step('https.Agent: keepAlive reuses a TLS connection', async log => {
+    const agent: any = new https.Agent({ keepAlive: true });
+    const fetchOnce = () =>
+      new Promise<any>((resolve, reject) => {
+        const req: any = https.get('https://example.com/', { agent }, (res: any) => {
+          res.resume();
+          res.on('end', () => resolve({ status: res.statusCode, socket: req.socket ?? res.socket }));
+        });
+        req.on('error', (err: any) =>
+          reject(OFFLINE_CODES.includes(err?.code) ? new SkipError(`no internet (${err.code})`) : err),
+        );
+      });
+    try {
+      const first = await fetchOnce();
+      // the socket goes back to the pool once the response is complete
+      await delay(50);
+      const pooled = Object.values(agent.freeSockets as Record<string, any[]>).flat();
+      const second = await fetchOnce();
+      log(`statuses ${first.status} ${second.status}, pooled ${pooled.length}`);
+      if (first.status !== 200 || second.status !== 200) {
+        throw new Error(`statuses ${first.status} ${second.status}`);
+      }
+      if (pooled.length !== 1 || !pooled[0].encrypted) {
+        throw new Error(`expected 1 pooled TLS socket, got ${pooled.length}`);
+      }
+      if (second.socket !== pooled[0]) {
+        throw new Error('the second request did not reuse the pooled socket');
+      }
+      return '2 requests on 1 TLS connection';
+    } finally {
+      agent.destroy();
+    }
+  }, 20000);
+
   await step('tls: invalid certificates are refused', async log => {
     const results = [
       await expectRefused('self-signed.badssl.com', log),
