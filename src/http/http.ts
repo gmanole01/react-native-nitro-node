@@ -1115,7 +1115,7 @@ interface AgentOptions {
   maxCachedSessions?: number;
 }
 
-class Agent extends EventEmitter {
+export class Agent extends EventEmitter {
   public maxSockets: number = Infinity;
   public maxTotalSockets: number = Infinity;
   public maxFreeSockets: number = 256;
@@ -1130,26 +1130,17 @@ class Agent extends EventEmitter {
   private _totalSockets: number = 0;
   public proxy: string | null = null;
 
-  /**
-   * Gets the proxy URL for the given request options.
-   * Checks HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables.
-   *
-   * @param options Request options to determine if proxy should be used
-   * @returns Proxy URL or null if no proxy should be used
-   */
+  /** The proxy for a request: `proxy`, or HTTP(S)_PROXY unless NO_PROXY matches. */
   protected getProxy(options: RequestOptions): string | null {
-    // If explicitly set on agent, use that
     if (this.proxy) {
       return this.proxy;
     }
 
-    // Check environment variables (React Native may not have process.env)
     const env =
       typeof process !== 'undefined' && process.env ? process.env : {};
     const isHttps = options.protocol === 'https:';
     const host = options.hostname || options.host || 'localhost';
 
-    // Check NO_PROXY first
     const noProxy = env.NO_PROXY || env.no_proxy;
     if (noProxy) {
       const noProxyList = noProxy.split(',').map((s) => s.trim().toLowerCase());
@@ -1162,7 +1153,6 @@ class Agent extends EventEmitter {
       }
     }
 
-    // Get proxy URL based on protocol
     const proxyUrl = isHttps
       ? env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy
       : env.HTTP_PROXY || env.http_proxy;
@@ -1207,7 +1197,6 @@ class Agent extends EventEmitter {
   public addRequest(req: ClientRequest, options: RequestOptions) {
     const name = this.getName(options);
 
-    // 1. Check if there's an idle socket in freeSockets
     if (this.freeSockets[name] && this.freeSockets[name].length > 0) {
       const socket =
         this.scheduling === 'lifo'
@@ -1216,39 +1205,32 @@ class Agent extends EventEmitter {
 
       if (this.freeSockets[name].length === 0) delete this.freeSockets[name];
 
-      // 取出即取消空闲销毁定时器（回池时设的，见 releaseSocket）
       if ((socket as any)._agentIdleTimer) {
         clearTimeout((socket as any)._agentIdleTimer);
         delete (socket as any)._agentIdleTimer;
       }
 
-      // Re-use socket
       if (!this.sockets[name]) this.sockets[name] = [];
       this.sockets[name].push(socket);
 
-      // 必须走 reuseSocket()：它会先摘掉 releaseSocket 留下的 _agentOnClose 监听。
-      // 否则那条陈旧监听会在 socket 之后关闭时再 _removeSocket 一次，把计数改坏（TS-M2）。
+      // reuseSocket() drops releaseSocket()'s close listener, which would
+      // otherwise remove the socket from the counts a second time
       this.reuseSocket(socket, req);
       return;
     }
 
-    // 2. Check if we can create a new connection
     const currentSockets = this.sockets[name]?.length || 0;
     if (
       currentSockets < this.maxSockets &&
       this._totalSockets < this.maxTotalSockets
     ) {
       if (!this.sockets[name]) this.sockets[name] = [];
-
-      // Increment total sockets early
       this._totalSockets++;
-
-      // ClientRequest handles connection but we signal it to proceed
+      // null: the request makes its own connection
       req.onSocket(null as any);
       return;
     }
 
-    // 3. Queue the request
     if (!this.requests[name]) this.requests[name] = [];
     this.requests[name].push(req);
   }
@@ -1262,7 +1244,7 @@ class Agent extends EventEmitter {
     const port = options.port || (isHttps ? 443 : 80);
     const host = options.hostname || options.host || 'localhost';
 
-    // Build clean connection options - DO NOT pass HTTP path as it will be confused with Unix socket path
+    // Not the request's `path`: net would take it for a Unix socket path
     const connectOptions: any = {
       host: host,
       port: port,
@@ -1279,10 +1261,8 @@ class Agent extends EventEmitter {
       ? new tls.TlsSocket(connectOptions)
       : new net.Socket();
 
-    // Re-emit keylog events from TLSSockets
     if (isHttps) {
       socket.on('keylog', (line: Buffer) => {
-        // @ts-ignore - Agent is an EventEmitter via Node-like inheritance or internal use
         this.emit('keylog', line, socket);
       });
     }
@@ -1302,9 +1282,7 @@ class Agent extends EventEmitter {
 
     socket.on('error', (err: Error) => {
       if (called) {
-        // 连接已经成功过、socket 已交给请求：仍必须把它的池位还回去 ——
-        // 否则这些 socket 会永久占着 maxSockets 名额，之后所有请求都只能排在
-        // requests 队列里（TS-M1）。_removeSocket 幂等，重复调用不会多减。
+        // Already handed to a request: still give its place in the pool back
         this._removeSocket(socket, name);
         return;
       }
@@ -1328,14 +1306,11 @@ class Agent extends EventEmitter {
   public releaseSocket(socket: net.Socket, options: RequestOptions) {
     const name = this.getName(options);
 
-    // 防御：若这条 socket 还挂着空闲销毁定时器（理论上取出时已清），先清掉，
-    // 否则定时器晚到会去销毁一条已经在用的 socket。
     if ((socket as any)._agentIdleTimer) {
       clearTimeout((socket as any)._agentIdleTimer);
       delete (socket as any)._agentIdleTimer;
     }
 
-    // Remove from active sockets
     if (this.sockets[name]) {
       const idx = this.sockets[name].indexOf(socket);
       if (idx !== -1) this.sockets[name].splice(idx, 1);
@@ -1349,7 +1324,6 @@ class Agent extends EventEmitter {
     socket.once('error', onClose);
     (socket as any)._agentOnClose = onClose;
 
-    // Check if there are pending requests - ALWAYS reuse if something is waiting
     if (this.requests[name] && this.requests[name].length > 0) {
       const req = this.requests[name].shift()!;
       if (this.requests[name].length === 0) delete this.requests[name];
@@ -1361,12 +1335,10 @@ class Agent extends EventEmitter {
     }
 
     if (this.keepAlive && this.keepSocketAlive(socket)) {
-      // Return to free pool
       if (!this.freeSockets[name]) this.freeSockets[name] = [];
       if (this.freeSockets[name].length < this.maxFreeSockets) {
-        // 空闲超时：keepAliveMsecs 内没被复用就销毁并归还池位（TS-M3）。
-        // 注：Node 里 keepAliveMsecs 本是 TCP keep-alive 探测间隔，这里按计划
-        // 兼作空闲上限。默认 1s 偏保守 —— 池化收益变小，但不会长期占着空闲 fd。
+        // Unlike Node, where keepAliveMsecs is the TCP keep-alive delay, it is
+        // also how long a free socket waits to be reused before it is closed
         const idleTimer = setTimeout(() => {
           delete (socket as any)._agentIdleTimer;
           this._removeSocket(socket, name);
@@ -1389,7 +1361,6 @@ class Agent extends EventEmitter {
   }
 
   public reuseSocket(socket: net.Socket, req: ClientRequest): void {
-    // Remove agent listeners before reusing
     if ((socket as any)._agentOnClose) {
       socket.removeListener('close', (socket as any)._agentOnClose);
       socket.removeListener('error', (socket as any)._agentOnClose);
@@ -1398,12 +1369,7 @@ class Agent extends EventEmitter {
     req.onSocket(socket);
   }
 
-  /**
-   * 把一条已经断开的 socket 从池子里摘除并归还池位计数（幂等）。
-   *
-   * ClientRequest 在 error/close 路径上调用它（TS-M1）。不做的话 sockets[name] 会
-   * 永久残留、_totalSockets 只增不减，一旦触顶所有新请求都只能排队。
-   */
+  /** Takes a closed socket out of the pool. Calling it twice does nothing. */
   public removeSocket(socket: net.Socket, options: RequestOptions): void {
     this._removeSocket(socket, this.getName(options));
   }
@@ -1439,7 +1405,7 @@ class Agent extends EventEmitter {
   }
 }
 
-const globalAgent = new Agent();
+export const globalAgent = new Agent();
 
 /** Node's http.RequestOptions, the supported part of it. */
 export interface RequestOptions {
@@ -1558,6 +1524,8 @@ export class ClientRequest extends OutgoingMessage {
   public method: string;
   public path: string;
   public host: string;
+  /** The agent that gives this request its socket, as Node's req.agent. */
+  public agent: Agent;
   private _res?: IncomingMessage;
   private _options: RequestOptions;
   private _connected: boolean = false;
@@ -1674,7 +1642,8 @@ export class ClientRequest extends OutgoingMessage {
       this.setTimeout(options.timeout);
     }
 
-    const agent =
+    // agent: false gets an agent of its own, as in Node
+    this.agent =
       options.agent === false
         ? new Agent()
         : options.agent instanceof Agent
@@ -1682,7 +1651,7 @@ export class ClientRequest extends OutgoingMessage {
         : globalAgent;
 
     process.nextTick(() => {
-      agent.addRequest(this, this._options);
+      this.agent.addRequest(this, this._options);
     });
   }
 
@@ -1691,8 +1660,7 @@ export class ClientRequest extends OutgoingMessage {
       this.socket = socket;
       this._connected = true;
       this.emit('socket', this.socket);
-      // IMPORTANT: attach response listeners BEFORE flushing writes.
-      // If we flush first, the server may respond before we have a data listener.
+      // Listen before writing, or the response could arrive first
       this._attachSocketListeners();
       this._flushPendingWrites();
     } else {
@@ -1810,8 +1778,10 @@ export class ClientRequest extends OutgoingMessage {
         self.emit('close');
         res.emit('close');
       });
+
       res.push(null);
-      self._cleanupSocket();
+
+      self._finishResponse();
     };
 
     const onData = (data: Buffer) => {
@@ -1838,6 +1808,7 @@ export class ClientRequest extends OutgoingMessage {
         return;
       }
 
+      self._discardSocket();
       self._cleanupSocket();
 
       // emit on next tick
@@ -1861,6 +1832,7 @@ export class ClientRequest extends OutgoingMessage {
         return;
       }
 
+      self._discardSocket();
       self._cleanupSocket();
 
       // emit on next tick
@@ -1883,31 +1855,53 @@ export class ClientRequest extends OutgoingMessage {
     };
   }
 
-  private _cleanupSocket() {
+  private _discardSocket() {
     const socket = this.socket;
+    if (!socket) {
+      return;
+    }
+    this.agent.removeSocket(socket, this._options);
+  }
 
-    // clear net.Socket events
+  private _cleanupSocket() {
     if (this._netSocketCleanup) {
       this._netSocketCleanup();
-      this._netSocketCleanup = null;
     }
-    // remove socket
+    this._netSocketCleanup = null;
     this.socket = null;
-
-    // The connection is never reused (every request is sent with
-    // "Connection: close" and there is no agent), so close it here instead of
-    // relying on the server to do it.
-    if (socket && !socket.destroyed) {
-      // our listeners are gone, make sure a late error is not left unhandled
-      socket.on('error', noop);
-      socket.destroy();
-    }
-    // we're no longer connected
     this._connected = false;
-    // Fail any writes stranded in the pending queue: they were never handed to
-    // the stream machinery, so without this their payloads and callbacks would
-    // be retained indefinitely.
     this._failPendingWrites(new Error('Request socket closed'));
+  }
+
+  private _finishResponse() {
+    const agent = this.agent;
+    const socket = this.socket;
+
+    const connHeader = this._res?.headers?.['connection'];
+    const connValue = Array.isArray(connHeader)
+      ? connHeader.join(',')
+      : connHeader;
+    const connLower =
+      typeof connValue === 'string' ? connValue.toLowerCase() : '';
+    const explicitClose = connLower.includes('close');
+    const explicitKeepAlive = connLower.includes('keep-alive');
+
+    const isHttp10 = this._res?.httpVersion === '1.0';
+
+    const serverWantsClose = explicitClose || (isHttp10 && !explicitKeepAlive);
+
+    this._cleanupSocket();
+
+    if (socket) {
+      if (serverWantsClose) {
+        agent.removeSocket(socket, this._options);
+        socket.destroy();
+      } else {
+        agent.releaseSocket(socket, this._options);
+      }
+    }
+
+    this.emit('close');
   }
 
   private _failPendingWrites(err: Error) {
