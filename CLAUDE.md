@@ -86,7 +86,16 @@ when adding or changing an API.
   redirects Node module names (`fs`, `fs/`, `node:fs`) to `src/<name>` **only
   for files inside `node_modules`** by default; `includeAppCode: true` does the
   app too. Never redirects our own `src/`/`lib/`, nor `buffer`/`events`/`punycode`/
-  `readable-stream` asking for their own name (`WRAPPED_PACKAGES`). App code
+  `readable-stream` asking for their own name (`WRAPPED_PACKAGES`). `events`
+  and `stream` (`CALLABLE_MODULES`) go straight to the package they wrap
+  (`events`, `readable-stream/lib/stream.js`), resolved from our `src/`,
+  instead of `index.ts`: Node's `require()` of them is a function
+  (EventEmitter, Stream), and `require()` of an ES module gives its
+  namespace, which `new` fails on ("Object is not a constructor"). Their
+  `index.ts` default export is that same function, and they must stay pure
+  re-exports (the user dropped `cjs.js` shims for this). The config may be an object, a promise or a function
+  (`withRozenite` returns an async function); spreading one of those as an
+  object silently drops the whole config. App code
   should import `react-native-nitro-node/<module>`: TypeScript always types
   bare `'fs'` as Node's (`@types/node` comes in via `@types/readable-stream`,
   and its ambient modules beat `paths`).

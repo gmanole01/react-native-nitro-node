@@ -13,6 +13,9 @@
  *   const { withNitroNode } = require('react-native-nitro-node/metro');
  *   module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config));
  *
+ * The config can also be a promise or a function returning one, as Metro
+ * accepts and some other plugins (withRozenite, ...) return.
+ *
  * The app's own code is left alone by default: there, TypeScript would type
  * `import fs from 'fs'` as Node's fs anyway, so importing
  * 'react-native-nitro-node/fs' is the clearer way. To redirect it too, and
@@ -57,6 +60,19 @@ const WRAPPED_PACKAGES = {
   events: 'events',
   punycode: 'punycode',
   stream: 'readable-stream',
+};
+
+/**
+ * Our modules whose Node module.exports is a function, not an object, and the
+ * file of the package they wrap that exports it: require('events') is
+ * EventEmitter, require('stream') is Stream. Requests for these go to that
+ * file rather than to src/<name>/index.ts: require() of an ES module returns
+ * its namespace, which `new` can't be used on. (readable-stream's main file
+ * exports Readable, so stream takes lib/stream.js, which exports Stream.)
+ */
+const CALLABLE_MODULES = {
+  events: 'events',
+  stream: 'readable-stream/lib/stream.js',
 };
 
 // Our own code imports the npm packages under the same names (src/buffer
@@ -105,7 +121,10 @@ function keepReason(name, from, modules, includeAppCode) {
   if (!includeAppCode && !isDependency(from)) {
     return 'app code, see `includeAppCode`';
   }
-  if (name in WRAPPED_PACKAGES && isInsidePackage(from, WRAPPED_PACKAGES[name])) {
+  if (
+    name in WRAPPED_PACKAGES &&
+    isInsidePackage(from, WRAPPED_PACKAGES[name])
+  ) {
     return `inside ${WRAPPED_PACKAGES[name]}, which our ${name} wraps`;
   }
   return null;
@@ -117,7 +136,9 @@ function describeResolution(resolution, root) {
     return path.relative(root, resolution.filePath);
   }
   if (resolution.type === 'assetFiles') {
-    return resolution.filePaths.map((file) => path.relative(root, file)).join(', ');
+    return resolution.filePaths
+      .map((file) => path.relative(root, file))
+      .join(', ');
   }
   return `(${resolution.type})`;
 }
@@ -127,17 +148,44 @@ function describeResolution(resolution, root) {
  * library. Any resolveRequest already in `config` still handles everything
  * else.
  *
+ * `config` can be what Metro accepts as module.exports: a config, a promise
+ * of one, or a function (called with Metro's default config) returning
+ * either. The result is then the same kind, wrapping it.
+ *
  * @template {import('metro-config').MetroConfig} T
- * @param {T} config
+ * @param {T | Promise<T> | ((...args: any[]) => T | Promise<T>)} config
  * @param {{ modules?: string[], includeAppCode?: boolean, debug?: boolean }} [options]
  *   `modules`: the names to redirect, from `MODULES`. Defaults to all of them.
  *   `includeAppCode`: redirect them in the app's own code too, not only in
  *   its dependencies. Defaults to false.
  *   `debug`: log each request for a Node module name and how it resolves.
  *   Defaults to false.
- * @returns {T}
+ * @returns {T | Promise<T> | ((...args: any[]) => Promise<T>)}
  */
 function withNitroNode(config, options = {}) {
+  // Checked now rather than when Metro resolves the config, so a bad option
+  // fails at once
+  const apply = withNitroNodeConfig(options);
+  if (typeof config === 'function') {
+    return async (...args) => {
+      return apply(await config(...args));
+    };
+  }
+  if (
+    config !== null &&
+    config !== undefined &&
+    typeof config.then === 'function'
+  ) {
+    return Promise.resolve(config).then(apply);
+  }
+  return apply(config);
+}
+
+/**
+ * withNitroNode for a config object: checks `options` and returns the
+ * function that applies them to one.
+ */
+function withNitroNodeConfig(options) {
   const modules = new Set(options.modules ?? MODULES);
   for (const name of modules) {
     if (!MODULES.includes(name)) {
@@ -150,12 +198,6 @@ function withNitroNode(config, options = {}) {
 
   const includeAppCode = options.includeAppCode === true;
   const debug = options.debug === true;
-  // Paths in the log are relative to the app
-  const root = config.projectRoot ?? process.cwd();
-  const log = (from, moduleName, outcome) =>
-    console.log(
-      `[withNitroNode] ${path.relative(root, from)}: '${moduleName}' ${outcome}`,
-    );
 
   if (debug) {
     console.log(
@@ -163,6 +205,30 @@ function withNitroNode(config, options = {}) {
         (includeAppCode ? 'dependencies and app code' : 'dependencies'),
     );
   }
+
+  return (config) => {
+    if (config == null || typeof config !== 'object') {
+      throw new Error(
+        `withNitroNode: expected a Metro config, got ${
+          config === null ? 'null' : typeof config
+        }.`,
+      );
+    }
+    return withResolver(config, modules, includeAppCode, debug);
+  };
+}
+
+/** `config` with the resolver sending Node module names to this library. */
+function withResolver(config, modules, includeAppCode, debug) {
+  // Paths in the log are relative to the app
+  const root = config.projectRoot ?? process.cwd();
+  const log = (from, moduleName, outcome) =>
+    console.log(
+      `[withNitroNode] ${path.relative(
+        root,
+        from,
+      )}: '${moduleName}' ${outcome}`,
+    );
 
   const resolver = config.resolver ?? {};
   const previous = resolver.resolveRequest;
@@ -181,10 +247,19 @@ function withNitroNode(config, options = {}) {
         const reason = keepReason(name, from, modules, includeAppCode);
         if (reason === null) {
           const filePath = path.join(__dirname, 'src', name, 'index.ts');
+          // Resolved from our own code, so it is the copy that code uses
+          const resolution =
+            name in CALLABLE_MODULES
+              ? resolve(
+                  { ...context, originModulePath: filePath },
+                  CALLABLE_MODULES[name],
+                  platform,
+                )
+              : { type: 'sourceFile', filePath };
           if (debug) {
-            log(from, moduleName, `→ ${path.relative(root, filePath)}`);
+            log(from, moduleName, `→ ${describeResolution(resolution, root)}`);
           }
-          return { type: 'sourceFile', filePath };
+          return resolution;
         }
         if (!debug) {
           return resolve(context, moduleName, platform);

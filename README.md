@@ -118,6 +118,12 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 
 Metro caches what it resolves, so start it with `--reset-cache` to see every request again.
 
+`withNitroNode` takes whatever Metro takes as a config: an object, a promise of one, or a function returning either. Some plugins return a function (`withRozenite`, for one), so it can go before or after them:
+
+```js
+module.exports = withNitroNode(withRozenite(mergeConfig(getDefaultConfig(__dirname), config)));
+```
+
 ### Globals
 
 Some packages use `Buffer` or `crypto` from the global scope, without importing them; Node and browsers define them, React Native doesn't. The Metro plugin can't help there, since nothing is imported. Import the polyfill first in your app's entry file:
@@ -288,7 +294,7 @@ tls.connect({ host: '192.168.1.10', port: 8443, servername: 'my-server.local', A
 
 ### Events
 
-`events` re-exports [`EventEmitter`](https://www.npmjs.com/package/events), the same class the sockets and servers are built on:
+`events` re-exports [`EventEmitter`](https://www.npmjs.com/package/events), the same class the sockets and servers are built on. As in Node, it is also the default export, and what packages get from `require('events')`:
 
 ```ts
 import { EventEmitter } from 'react-native-nitro-node/events';
@@ -300,7 +306,7 @@ bus.emit('ping', 1);
 
 ### Streams
 
-`stream` re-exports [`readable-stream`](https://www.npmjs.com/package/readable-stream), Node's own streams packaged for other platforms. Sockets, HTTP bodies and requests are these streams, so they combine with your own:
+`stream` re-exports [`readable-stream`](https://www.npmjs.com/package/readable-stream), Node's own streams packaged for other platforms. As in Node, the default export, and what packages get from `require('stream')`, is the legacy `Stream` class with the rest on it (`Stream.Readable`, `Stream.pipeline`, …). Sockets, HTTP bodies and requests are these streams, so they combine with your own:
 
 ```ts
 import { Transform, promises } from 'react-native-nitro-node/stream';
