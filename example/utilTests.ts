@@ -82,8 +82,11 @@ export async function runUtilTests(step: Step) {
     expectThrow('defaultOptions = 5', 'TypeError', () => {
       (inspect as any).defaultOptions = 5;
     });
-    // What Hermes can't show
-    expectEqual('a promise', inspect(Promise.resolve(1)), 'Promise { <unknown> }');
+    // React Native's Promise (the promise npm package): its state, not its fields, as Node
+    expectEqual('a promise', inspect(Promise.resolve(1)), 'Promise { 1 }');
+    expectEqual('a pending promise', inspect(new Promise(() => {})), 'Promise { <pending> }');
+    expectEqual('promises, deep equal', isDeepStrictEqual(Promise.resolve(1), Promise.resolve(2)), true);
+    // what Hermes can't show
     expectEqual('a Map iterator', inspect(new Map([[1, 2]]).keys()), '[Map Iterator] { <items unknown> }');
     return 'custom inspect, legacy arguments, defaults';
   });

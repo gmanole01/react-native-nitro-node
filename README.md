@@ -577,7 +577,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 
 | API | Status | Notes |
 |---|:---:|---|
-| `util.inspect()` / `InspectOptions` | ✅ | Every option (`depth`, `colors`, `compact`, `breakLength`, `sorted`, `getters`, `showHidden`, `showProxy`, `maxArrayLength`, `maxStringLength`, `numericSeparator`), `inspect.custom`, `inspect.defaultOptions`. Hermes can't show a promise's state (`Promise { <unknown> }`), the entries of a Map or Set iterator, or WeakMap/WeakSet entries with `showHidden` (`<items unknown>`). Classes and async functions that Babel compiled show as plain functions |
+| `util.inspect()` / `InspectOptions` | ✅ | Every option (`depth`, `colors`, `compact`, `breakLength`, `sorted`, `getters`, `showHidden`, `showProxy`, `maxArrayLength`, `maxStringLength`, `numericSeparator`), `inspect.custom`, `inspect.defaultOptions`. Promises show their state from React Native's `Promise` (the `promise` package), as Node; a promise of another implementation shows `Promise { <unknown> }`. Hermes can't show the entries of a Map or Set iterator, or WeakMap/WeakSet entries with `showHidden` (`<items unknown>`). Classes and async functions that Babel compiled show as plain functions |
 | `util.format()` / `util.formatWithOptions()` | ✅ | Node's, on `inspect()` |
 | `util.isDeepStrictEqual()` | ✅ | Node's comparison: prototypes, cycles, Maps, Sets, typed arrays, boxed primitives, errors, … |
 | `util.promisify()` / `promisify.custom` | ✅ | |

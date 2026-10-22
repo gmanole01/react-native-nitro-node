@@ -5,7 +5,8 @@
  * throws on anything but a Map, ...), so look-alikes aren't taken for the
  * real thing. Where Hermes gives JavaScript no way in, they say so:
  *
- * - a promise's state: getPromiseDetails() returns kUnknown,
+ * - a promise's state, but for React Native's Promise (the `promise` npm
+ *   package), whose state is in its own fields: kUnknown for other ones,
  * - a Map or Set iterator's entries, which can't be read without consuming
  *   them: previewEntries() returns undefined,
  * - a proxy's target: only known for proxies made after the polyfill set up
@@ -142,8 +143,46 @@ export function getOwnNonIndexProperties(object: object, filter: number): Proper
   });
 }
 
-export function getPromiseDetails(_promise: unknown): [number, unknown?] {
-  return [kUnknown];
+/**
+ * React Native's Promise is the `promise` npm package (promise/setimmediate),
+ * which keeps its state in enumerable fields: _x (deferred state), _y
+ * (0 pending, 1 fulfilled, 2 rejected, 3 adopted the promise in _z), _z (the
+ * value) and _A (the callbacks).
+ */
+export const polyfillPromiseFields = ['_x', '_y', '_z', '_A'];
+
+export function isPolyfillPromise(value: unknown): boolean {
+  return (
+    isPromise(value) &&
+    typeof (value as Any)._y === 'number' &&
+    polyfillPromiseFields.every(field => Object.prototype.hasOwnProperty.call(value, field))
+  );
+}
+
+/** Own keys without the polyfill's state fields: Node shows and compares no state. */
+export function withoutPromiseFields<K extends PropertyKey>(value: unknown, keys: K[]): K[] {
+  return isPolyfillPromise(value) ? keys.filter(key => !polyfillPromiseFields.includes(key as string)) : keys;
+}
+
+export function getPromiseDetails(promise: unknown): [number, unknown?] {
+  if (!isPolyfillPromise(promise)) {
+    return [kUnknown];
+  }
+  let p = promise as Any;
+  // adopted: the state is the other promise's
+  while (p._y === 3 && isPolyfillPromise(p._z)) {
+    p = p._z;
+  }
+  switch (p._y) {
+    case 0:
+      return [constants.kPending];
+    case 1:
+      return [constants.kFulfilled, p._z];
+    case 2:
+      return [constants.kRejected, p._z];
+    default:
+      return [kUnknown];
+  }
 }
 
 export function getProxyDetails(value: unknown, full: boolean): unknown {

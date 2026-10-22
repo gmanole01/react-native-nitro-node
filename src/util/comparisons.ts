@@ -35,6 +35,7 @@ import {
   getOwnNonIndexProperties,
   isError,
   isURL,
+  withoutPromiseFields,
 } from './internals';
 import { assert } from '../node-internals';
 
@@ -445,7 +446,8 @@ function keyCheck(val1, val2, mode, memos, iterationType, keys2) {
   const isArrayLikeObject = keys2 !== undefined;
 
   if (keys2 === undefined) {
-    keys2 = ObjectKeys(val2);
+    // React Native: its Promise's state fields are no properties to Node
+    keys2 = withoutPromiseFields(val2, ObjectKeys(val2));
   }
   let keys1;
 
@@ -455,7 +457,7 @@ function keyCheck(val1, val2, mode, memos, iterationType, keys2) {
       if (!partialSymbolEquiv(val1, val2, keys2)) {
         return false;
       }
-    } else if (keys2.length !== (keys1 = ObjectKeys(val1)).length) {
+    } else if (keys2.length !== (keys1 = withoutPromiseFields(val1, ObjectKeys(val1))).length) {
       return false;
     } else if (mode === kStrict) {
       const symbolKeysA = getOwnSymbols(val1);

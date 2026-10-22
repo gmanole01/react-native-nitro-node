@@ -66,6 +66,7 @@ import {
   isWeakSet,
   join,
   kUnknown,
+  withoutPromiseFields,
   pathToFileUrlHref,
   previewEntries,
   removeColors,
@@ -818,6 +819,8 @@ function getKeys(value, showHidden) {
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
+  // React Native: its Promise's state fields are no properties to Node
+  keys = withoutPromiseFields(value, keys);
   return keys;
 }
 

@@ -93,7 +93,9 @@ when adding or changing an API.
   (`lib/internal/util/comparisons.js`), kept verbatim and `// @ts-nocheck`,
   on `./primordials` (Node's primordials, built from their names) and
   `./internals` (what V8 gives Node, in JavaScript: brand checks, and markers
-  where Hermes can't: promise state, iterator entries). Plain globals are not
+  where Hermes can't: iterator entries; a promise's state is read from React
+  Native's `promise` polyfill fields `_x`/`_y`/`_z`/`_A`, which `inspect` and
+  `isDeepStrictEqual` skip as keys). Plain globals are not
   taken from primordials there: Babel's module code uses `Object` before the
   destructuring would set it. `types.isProxy()` only knows the proxies made
   after the polyfill wrapped `Proxy` (`./proxies`). Everything else in `util`
