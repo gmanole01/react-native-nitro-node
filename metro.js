@@ -33,6 +33,7 @@ const path = require('path');
 const MODULES = [
   'buffer',
   'crypto',
+  'diagnostics_channel',
   'dns',
   'events',
   'fs',

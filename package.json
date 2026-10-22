@@ -42,6 +42,18 @@
         "default": "./lib/commonjs/crypto/index.js"
       }
     },
+    "./diagnostics_channel": {
+      "source": "./src/diagnostics_channel/index.ts",
+      "react-native": "./src/diagnostics_channel/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/diagnostics_channel/index.d.ts",
+        "default": "./lib/module/diagnostics_channel/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/diagnostics_channel/index.d.ts",
+        "default": "./lib/commonjs/diagnostics_channel/index.js"
+      }
+    },
     "./dns": {
       "source": "./src/dns/index.ts",
       "react-native": "./src/dns/index.ts",
