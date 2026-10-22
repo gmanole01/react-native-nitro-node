@@ -1310,7 +1310,10 @@ export class Agent extends EventEmitter {
     };
 
     // A TLSSocket (https.Agent) is ready once its handshake is done
-    socket.once('encrypted' in socket ? 'secureConnect' : 'connect', onConnected);
+    socket.once(
+      'encrypted' in socket ? 'secureConnect' : 'connect',
+      onConnected,
+    );
 
     socket.on('error', (err: Error) => {
       if (called) {
@@ -1755,6 +1758,11 @@ export class ClientRequest extends OutgoingMessage {
     process.nextTick(() => {
       this.agent.addRequest(this, this._options);
     });
+  }
+
+  /** The response once its headers arrived, as Node's req.res (null before). */
+  get res() {
+    return this._res ?? null;
   }
 
   public onSocket(socket: net.Socket | null) {
