@@ -222,6 +222,18 @@
         "default": "./lib/commonjs/timers/index.js"
       }
     },
+    "./timers/promises": {
+      "source": "./src/timers/promises/index.ts",
+      "react-native": "./src/timers/promises/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/timers/promises/index.d.ts",
+        "default": "./lib/module/timers/promises/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/timers/promises/index.d.ts",
+        "default": "./lib/commonjs/timers/promises/index.js"
+      }
+    },
     "./tls": {
       "source": "./src/tls/index.ts",
       "react-native": "./src/tls/index.ts",

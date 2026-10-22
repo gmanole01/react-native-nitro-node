@@ -47,6 +47,7 @@ const MODULES = [
   'querystring',
   'stream',
   'timers',
+  'timers/promises',
   'tls',
 ];
 

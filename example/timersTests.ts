@@ -8,6 +8,12 @@ import timersDefault, {
   setTimeout,
 } from 'react-native-nitro-node/timers';
 import process from 'react-native-nitro-node/process';
+import timersPromises, {
+  scheduler,
+  setImmediate as setImmediateAsync,
+  setInterval as setIntervalAsync,
+  setTimeout as setTimeoutAsync,
+} from 'react-native-nitro-node/timers/promises';
 import * as fs from 'react-native-nitro-node/fs';
 import { type Step, delay, expectThrow } from './testUtils';
 
@@ -49,6 +55,39 @@ async function catchGlobalErrors(fn: () => void, wait: number): Promise<string[]
 }
 
 /** timers and process: the library's libuv timers, nextTick, and the Metro redirects. */
+/** Resolves with what `promise` rejects with, or fails if it resolves. */
+async function rejection(label: string, promise: Promise<unknown>): Promise<any> {
+  try {
+    await promise;
+  } catch (err) {
+    return err;
+  }
+  throw new Error(`${label}: resolved, expected a rejection`);
+}
+
+/**
+ * A minimal AbortSignal: whatever React Native has or not, and it counts its
+ * listeners, to check they are removed.
+ */
+function fakeSignal() {
+  const listeners = new Set<() => void>();
+  const signal = {
+    aborted: false,
+    reason: undefined as unknown,
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    abort(reason: unknown) {
+      signal.aborted = true;
+      signal.reason = reason;
+      for (const listener of [...listeners]) {
+        listener();
+      }
+    },
+    listeners: () => listeners.size,
+  };
+  return signal;
+}
+
 export async function runTimersTests(step: Step) {
   await step('timers: exports and argument checks', async () => {
     expectEqual('default.setTimeout', timersDefault.setTimeout, timers.setTimeout);
@@ -302,6 +341,115 @@ export async function runTimersTests(step: Step) {
     setImmediate(() => order.push('immediate'));
     await settle(order, 3);
     expectEqual('against timers', order.join(','), 'tick,immediate,timeout');
+  });
+
+  await step('timers/promises: setTimeout and setImmediate resolve with the value', async () => {
+    const start = Date.now();
+    const value = await setTimeoutAsync(50, 'later');
+    const elapsed = Date.now() - start;
+    expectEqual('setTimeout value', value, 'later');
+    if (elapsed < 40) {
+      throw new Error(`resolved after ${elapsed}ms`);
+    }
+    expectEqual('setTimeout()', await setTimeoutAsync(), undefined);
+    expectEqual('setImmediate value', await setImmediateAsync('soon'), 'soon');
+    expectEqual('scheduler.wait()', await scheduler.wait(10), undefined);
+    expectEqual('scheduler.yield()', await scheduler.yield(), undefined);
+    expectEqual('timers.promises', timers.promises, timersPromises);
+    expectEqual('default export', timersDefault.promises, timersPromises);
+    return `setTimeout after ${elapsed}ms`;
+  });
+
+  await step('timers/promises: arguments are checked as in Node', async () => {
+    // the messages are Node's
+    const cases: Array<[string, Promise<unknown>, string]> = [
+      ["setTimeout('x')", setTimeoutAsync('x' as any), `The "delay" argument must be of type number. Received type string ('x')`],
+      ['options null', setTimeoutAsync(1, 1, null as any), 'The "options" argument must be of type object. Received null'],
+      ['options []', setImmediateAsync(1, [] as any), 'The "options" argument must be of type object. Received an instance of Array'],
+      ['signal: 1', setTimeoutAsync(1, 1, { signal: 1 as any }), 'The "options.signal" property must be an instance of AbortSignal. Received type number (1)'],
+      ["ref: 'x'", setTimeoutAsync(1, 1, { ref: 'x' as any }), `The "options.ref" property must be of type boolean. Received type string ('x')`],
+      ["scheduler.wait('x')", scheduler.wait('x' as any), `The "delay" argument must be of type number. Received type string ('x')`],
+      ["setInterval('x')", setIntervalAsync('x' as any).next(), `The "delay" argument must be of type number. Received type string ('x')`],
+    ];
+    for (const [label, promise, message] of cases) {
+      const err = await rejection(label, promise);
+      expectEqual(`${label}: error`, `${err.name} ${err.code} ${err.message}`, `TypeError ERR_INVALID_ARG_TYPE ${message}`);
+    }
+    // anything not 1 ms to 2^31 - 1 ms is 1 ms, as for the callback timers
+    expectEqual('setTimeout(-5)', await setTimeoutAsync(-5, 'ok'), 'ok');
+    return `${cases.length} calls rejected`;
+  });
+
+  await step('timers/promises: an AbortSignal rejects with an AbortError', async () => {
+    const already = fakeSignal();
+    already.abort('before');
+    let err = await rejection('already aborted', setTimeoutAsync(10, 1, { signal: already }));
+    expectEqual('already aborted', `${err.name} ${err.code} ${err.message} ${err.cause}`, 'AbortError ABORT_ERR The operation was aborted before');
+
+    const later = fakeSignal();
+    const waiting = setTimeoutAsync(1000, 1, { signal: later });
+    setTimeout(() => later.abort('later'), 20);
+    err = await rejection('aborted while waiting', waiting);
+    expectEqual('aborted while waiting', `${err.name} ${err.cause}`, 'AbortError later');
+
+    const immediate = fakeSignal();
+    immediate.abort('now');
+    err = await rejection('setImmediate', setImmediateAsync(1, { signal: immediate }));
+    expectEqual('setImmediate', err.name, 'AbortError');
+
+    // the listener goes once the promise settles
+    const unused = fakeSignal();
+    await setTimeoutAsync(10, 1, { signal: unused });
+    expectEqual('listeners after resolving', unused.listeners(), 0);
+    expectEqual('listeners after aborting', later.listeners(), 0);
+    return 'aborted before and while waiting, listeners removed';
+  });
+
+  await step('timers/promises: setInterval yields every interval', async () => {
+    const start = Date.now();
+    const values: string[] = [];
+    for await (const value of setIntervalAsync(30, 'tick')) {
+      values.push(value);
+      if (values.length === 3) {
+        break;
+      }
+    }
+    const elapsed = Date.now() - start;
+    expectEqual('values', values.join(), 'tick,tick,tick');
+    if (elapsed < 80) {
+      throw new Error(`3 ticks of 30ms after ${elapsed}ms`);
+    }
+
+    // a slow loop body gets the ticks it missed right after it
+    const slow = setIntervalAsync(10, 'missed');
+    await slow.next();
+    await delay(60);
+    const before = Date.now();
+    for (let i = 0; i < 3; i++) {
+      await slow.next();
+    }
+    const backToBack = Date.now() - before;
+    await slow.return();
+    expectEqual('after return()', JSON.stringify(await slow.next()), '{"done":true}');
+    if (backToBack > 15) {
+      throw new Error(`missed ticks came ${backToBack}ms apart`);
+    }
+
+    // aborting ends the loop with an AbortError
+    const signal = fakeSignal();
+    const seen: string[] = [];
+    setTimeout(() => signal.abort('stop'), 70);
+    const err = await rejection(
+      'aborted interval',
+      (async () => {
+        for await (const value of setIntervalAsync(30, 'a', { signal })) {
+          seen.push(value);
+        }
+      })(),
+    );
+    expectEqual('aborted interval', `${err.name} ${err.cause}`, 'AbortError stop');
+    expectEqual('listeners after the loop', signal.listeners(), 0);
+    return `3 ticks in ${elapsed}ms, ${seen.length} before the abort`;
   });
 
   await step('process: the browser stand-in', async () => {

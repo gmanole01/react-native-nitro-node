@@ -100,7 +100,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -356,6 +356,23 @@ The global `setTimeout` and friends stay React Native's: import these where you 
 
 `setImmediate` runs its callback after the I/O events that are already in, like Node, and not as a microtask, like React Native's own.
 
+`timers/promises` (also `timers.promises`) has the promise versions, on the same loop:
+
+```ts
+import { setTimeout, setInterval, scheduler } from 'react-native-nitro-node/timers/promises';
+
+await setTimeout(1000);
+
+const controller = new AbortController(); // controller.abort() rejects with an AbortError
+const value = await setTimeout(100, 'value', { signal: controller.signal });
+
+for await (const _ of setInterval(60_000)) {
+  console.log('still running');
+}
+
+await scheduler.yield(); // let the I/O that is already in run first
+```
+
 ### Process
 
 `process.nextTick` defers a callback to after the current code, like Node's:
@@ -505,7 +522,7 @@ dns.lookup('nope.invalid', (err) => {
 | `Timeout` | ✅ | `refresh()`, `close()`, `hasRef()`, `Symbol.toPrimitive` (so `clearTimeout(+timer)` works) and `Symbol.dispose` where the runtime has it |
 | `Immediate` | ✅ | `hasRef()` and `Symbol.dispose` where the runtime has it |
 | `ref()` / `unref()` | ✅ | Accepted, but no effect: an app has no process exit for a timer to hold up |
-| `timers/promises` | ❌ | Planned |
+| `timers/promises` | ✅ | `setTimeout`, `setImmediate`, `setInterval` (an async iterator) and `scheduler.wait()` / `scheduler.yield()`, also as `timers.promises`. `signal` rejects with Node's `AbortError`; `ref` is accepted, with no effect |
 
 ### `http2`
 
@@ -634,7 +651,6 @@ Know the limits:
 - [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
 - [ ] `dns.promises` and `fs.promises`
 - [ ] `querystring.parse()`
-- [ ] `timers/promises`
 - [ ] `readdir({ withFileTypes })` with `Dirent`
 - [ ] `fs.watch` and `fs.watchFile`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
@@ -654,7 +670,7 @@ Know the limits:
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
 - [x] `events`, `stream`, `querystring` and `punycode` entry points
-- [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background
+- [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background, and `timers/promises`
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `crypto`: Node's API and WebCrypto's `subtle`, ported from react-native-quick-crypto

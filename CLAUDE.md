@@ -1,7 +1,7 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`timers` (and `timers/promises`), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
@@ -21,7 +21,8 @@ when adding or changing an API.
 - `src/native/index.ts`: creates the HybridObjects and exports them to the TS
   modules.
 - `src/<module>/<module>.ts` + `index.ts`: one folder per Node module, each a
-  `package.json` export (`react-native-nitro-node/<module>`).
+  `package.json` export (`react-native-nitro-node/<module>`). A sub-module has a
+  folder inside its module's: `src/timers/promises/` for `timers/promises`.
 - `src/http2/`: stubs only, the base classes (sessions, streams, servers,
   `Http2ServerRequest`/`Response`) and the common functions (`connect`,
   `createServer`, `createSecureServer`, `getDefaultSettings`, `constants`).
