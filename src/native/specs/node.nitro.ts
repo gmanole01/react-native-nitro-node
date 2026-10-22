@@ -484,3 +484,39 @@ export interface NitroNodeZlib extends HybridObject<{ android: 'c++'; ios: 'c++'
   /** zlib's crc32() of [offset, offset + length) of `data`, continuing from `value`. */
   crc32(data: ArrayBuffer, offset: number, length: number, value: number): number;
 }
+
+/**
+ * A parsed URL, as Node's URL binding gives it to lib/internal/url.js: its
+ * serialization, and the offsets of its parts in it (ada::url_components:
+ * protocol_end, username_end, host_start, host_end, port, pathname_start,
+ * search_start, hash_start) and the scheme type, 2^32 - 1 for a missing part.
+ */
+export interface UrlParsed {
+  href: string;
+  components: number[];
+}
+
+/**
+ * Node's URL binding (internalBinding('url'), src/node_url.cc) on ada, the
+ * WHATWG URL parser Node uses, at Node 22's version. No state: one instance.
+ */
+// prettier-ignore
+export interface NitroNodeUrl extends HybridObject<{ android: 'c++'; ios: 'c++' }> {
+  /** undefined when `input` (or `base`) is no URL: JS throws ERR_INVALID_URL. */
+  parse(input: string, base?: string): UrlParsed | undefined;
+  canParse(input: string, base?: string): boolean;
+  /** `href` with one part set (Node's url_update_action), undefined when the setter refuses it. */
+  update(href: string, action: number, value: string): UrlParsed | undefined;
+  /** url.format(URL, options): `href` without the parts not wanted. */
+  format(href: string, hash: boolean, unicode: boolean, search: boolean, auth: boolean): string;
+  /** undefined when `input` is no URL. */
+  getOrigin(input: string): string | undefined;
+  domainToASCII(input: string): string;
+  domainToUnicode(input: string): string;
+  /** The file: URL of a path; undefined when it's no URL. */
+  pathToFileURL(path: string, windows: boolean, hostname?: string): UrlParsed | undefined;
+  /** ada::idna::to_ascii, for the legacy url.parse() (Node's encoding binding). */
+  toASCII(input: string): string;
+  /** ada::idna::to_unicode. */
+  toUnicode(input: string): string;
+}

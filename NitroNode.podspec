@@ -165,6 +165,9 @@ Pod::Spec.new do |s|
     "deps/zstd/lib/common/*.c",
     "deps/zstd/lib/compress/*.c",
     "deps/zstd/lib/decompress/*.c",
+
+    # url: ada, the WHATWG URL parser Node uses
+    "deps/ada/ada.{h,cpp}",
   ]
   if sodium_enabled
     s.source_files += ["ios/libsodium-stable/src/libsodium/**/*.{h,c}"]
@@ -239,6 +242,8 @@ Pod::Spec.new do |s|
     '"$(PODS_TARGET_SRCROOT)/cpp/tls"',
     '"$(PODS_TARGET_SRCROOT)/cpp/timers"',
     '"$(PODS_TARGET_SRCROOT)/cpp/zlib"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/url"',
+    '"$(PODS_TARGET_SRCROOT)/deps/ada"',
     # crypto
     '"$(PODS_TARGET_SRCROOT)/cpp/crypto/utils"',
     '"$(PODS_TARGET_SRCROOT)/cpp/crypto/hkdf"',

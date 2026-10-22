@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `zlib` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -103,7 +103,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -330,7 +330,7 @@ net.createServer(async (socket) => {
 
 ### Query strings
 
-`querystring` is ported from Node's own module, so it encodes exactly like Node:
+`querystring` is ported from Node's own module, so it encodes and decodes exactly like Node:
 
 ```ts
 import querystring from 'react-native-nitro-node/querystring';
@@ -338,7 +338,21 @@ import querystring from 'react-native-nitro-node/querystring';
 querystring.stringify({ q: 'nitro node', tags: ['tcp', 'tls'], page: 2 });
 // 'q=nitro%20node&tags=tcp&tags=tls&page=2'
 
+querystring.parse('a=1&b=x+y&a=3'); // { a: ['1', '3'], b: 'x y' }
 querystring.escape('a&b=c'); // 'a%26b%3Dc'
+```
+
+### URLs
+
+`url` is Node's, on [ada](https://github.com/ada-url/ada), the WHATWG URL parser Node uses (the same version), so URLs parse, normalize and serialize as in Node:
+
+```ts
+import { URL, URLSearchParams } from 'react-native-nitro-node/url';
+
+const u = new URL('../api?q=1', 'https://例え.テスト/v1/');
+u.href; // 'https://xn--r8jz45g.xn--zckzah/api?q=1'
+u.searchParams.append('page', '2');
+u.search; // '?q=1&page=2'
 ```
 
 ### Timers
@@ -567,6 +581,21 @@ The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-cr
 
 Callbacks are called on the library's `process.nextTick`, so they also arrive while the app is in the background.
 
+### `url`
+
+Node 22's `lib/url.js` and `lib/internal/url.js`, ported, on [ada](https://github.com/ada-url/ada) 2.9.2, the WHATWG URL parser of Node 22, built in.
+
+| API | Status | Notes |
+|---|:---:|---|
+| `URL` | ✅ | Every property and setter, `URL.canParse()`, `URL.parse()`, IDNA (`例え.テスト` → `xn--r8jz45g.xn--zckzah`), IPv4/IPv6 hosts, Node's `ERR_INVALID_URL` with `input` and `base` |
+| `URLSearchParams` | ✅ | Every method, `size`, iteration, and the two-way link with its URL |
+| `URL.createObjectURL()` / `URL.revokeObjectURL()` | ✅ | React Native's, for its own `Blob`s, so the URLs work with `Image`, `fetch`, … |
+| `url.parse()` / `url.format()` / `url.resolve()` / `url.resolveObject()` / `Url` | ✅ | The legacy API, as Node's, `parseQueryString` and `slashesDenoteHost` included |
+| `fileURLToPath()` / `pathToFileURL()` / `fileURLToPathBuffer()` | ✅ | POSIX paths, as on Linux and macOS Node. The `windows` option isn't supported |
+| `domainToASCII()` / `domainToUnicode()` / `urlToHttpOptions()` | ✅ | |
+
+The global `URL` and `URLSearchParams` stay React Native's: import these where you need Node's.
+
 ### `util`
 
 Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, `lib/internal/util/comparisons.js`, `promisify()`): the same output, options and errors as Node. The rest of `util` is the [`util`](https://www.npmjs.com/package/util) npm package, which packages got for `require('util')` before.
@@ -587,7 +616,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 |---|:---:|---|
 | `events.EventEmitter` | ✅ | Re-exports the [`events`](https://www.npmjs.com/package/events) package |
 | `querystring.stringify()` / `encode()` / `escape()` | ✅ | Ported from Node: the same output, the same `ParsedUrlQueryInput` and `StringifyOptions` types |
-| `querystring.parse()` / `decode()` / `unescape()` | ❌ | Planned |
+| `querystring.parse()` / `decode()` / `unescape()` / `unescapeBuffer()` | ✅ | Ported from Node, with `maxKeys` and `decodeURIComponent` |
 | `punycode` | ✅ | `encode`, `decode`, `toASCII`, `toUnicode`, `ucs2` and `version`, from the [`punycode`](https://www.npmjs.com/package/punycode) package, the code Node's own (deprecated) `punycode` is |
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `stream/promises` | ✅ | `pipeline()` and `finished()` returning promises, with `signal`: the same object as `stream.promises`, as in Node |
@@ -686,7 +715,6 @@ Know the limits:
 - [ ] Certificate checks for IP addresses
 - [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
 - [ ] `dns.promises` and `fs.promises`
-- [ ] `querystring.parse()`
 - [ ] `readdir({ withFileTypes })` with `Dirent`
 - [ ] `fs.watch` and `fs.watchFile`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
@@ -696,7 +724,6 @@ Know the limits:
 - [ ] `http2`: client and server (only stubs for now)
 - [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
-- [ ] A `url` entry point, for a fuller drop-in `node:*` replacement
 - [ ] The rest of `util` in Node's own code (`TextEncoder`/`TextDecoder`, `parseArgs`, `styleText`, …)
 
 ### Done
@@ -706,7 +733,7 @@ Know the limits:
 - [x] `http.Agent` / `https.Agent`: connection pooling and keep-alive reuse
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
-- [x] `events`, `stream`, `querystring` and `punycode` entry points
+- [x] `events`, `stream`, `querystring` (now with `parse()`) and `punycode` entry points
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background, and `timers/promises`
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
@@ -714,6 +741,7 @@ Know the limits:
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
 - [x] `zlib`: Node's zlib, ported, with Brotli and zstd
 - [x] `util`: Node's `inspect()`, `format()`, `isDeepStrictEqual()`, `promisify()` and `types.isProxy()`
+- [x] `url`: Node's `URL`, `URLSearchParams` and the legacy API, on ada
 - [x] `buffer`, `os` (`tmpdir`, `homedir`, `networkInterfaces`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 
@@ -721,7 +749,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init

@@ -56,6 +56,7 @@
 #include "HybridVerifyHandle.hpp"
 #include "HybridX509Certificate.hpp"
 #include "HybridZlib.hpp"
+#include "HybridUrl.hpp"
 
 namespace margelo::nitro::node {
 
@@ -443,6 +444,15 @@ void registerAllNatives() {
                     "The HybridObject \"HybridZlib\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridZlib>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "NitroNodeUrl",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridUrl>,
+                    "The HybridObject \"HybridUrl\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridUrl>();
     }
   );
 }

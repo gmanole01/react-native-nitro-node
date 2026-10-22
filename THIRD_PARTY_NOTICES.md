@@ -7,7 +7,7 @@ licenses.
 | Software | Where | License |
 |---|---|---|
 | [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) | `src/crypto/`, `cpp/crypto/` (ported) | MIT |
-| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), `src/util/inspect.ts`, `src/util/comparisons.ts` and `promisify()` (from `lib/internal/util/`), ported | MIT |
+| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), `src/util/inspect.ts`, `src/util/comparisons.ts` and `promisify()` (from `lib/internal/util/`), `src/url/` (from `lib/url.js`, `lib/internal/url.js` and `src/node_url.cc`) and `src/querystring/` (from `lib/querystring.js`), ported | MIT |
 | [ncrypto](https://github.com/nodejs/ncrypto) | `deps/ncrypto` | MIT |
 | [simdutf](https://github.com/simdutf/simdutf) | `deps/simdutf` | MIT (or Apache 2.0, at your option) |
 | [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | `deps/blake3` | CC0 1.0 (or Apache 2.0, or Apache 2.0 with LLVM exception) |
@@ -17,6 +17,7 @@ licenses.
 | [c-ares](https://github.com/c-ares/c-ares) | `deps/c-ares`, `ios/Frameworks/c-ares.xcframework` | MIT |
 | [tlsuv](https://github.com/openziti/tlsuv) | `deps/tlsuv` | MIT |
 | [Brotli](https://github.com/google/brotli) | `deps/brotli` | MIT |
+| [ada](https://github.com/ada-url/ada) | `deps/ada` | MIT (or Apache 2.0, at your option) |
 | [Zstandard](https://github.com/facebook/zstd) | `deps/zstd` | BSD 3-clause (zstd is dual-licensed BSD or GPLv2; this library uses it under the BSD license) |
 | [OpenSSL](https://www.openssl.org) | iOS: downloaded by `NitroNode.podspec` (react-native-quick-crypto's build); Android: the `io.github.ronickg:openssl-static` package | Apache 2.0 |
 | [libsodium](https://libsodium.org) | Only with `SODIUM_ENABLED` / `sodiumEnabled`: downloaded by `NitroNode.podspec`, or the `io.github.ronickg:sodium` package | ISC |
@@ -303,6 +304,29 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## ada
+
+```
+Copyright 2023 Yagiz Nizipli and Daniel Lemire
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## Brotli

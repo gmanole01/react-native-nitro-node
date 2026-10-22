@@ -10,6 +10,7 @@ import type {
   NitroNodeTimers,
   NitroNodeTls,
   NitroNodeTlsSocket,
+  NitroNodeUrl,
   NitroNodeUv,
   NitroNodeZlib,
   SockAddr,
@@ -38,6 +39,9 @@ export const NitroOs =
 export const NitroTimers =
   NitroModules.createHybridObject<NitroNodeTimers>('NitroNodeTimers');
 
+export const NitroUrl =
+  NitroModules.createHybridObject<NitroNodeUrl>('NitroNodeUrl');
+
 /** A new zlib stream: each Gzip, Inflate, ... has its own. */
 export function createNitroZlib(): NitroNodeZlib {
   return NitroModules.createHybridObject<NitroNodeZlib>('NitroNodeZlib');
@@ -50,6 +54,7 @@ export type {
   NitroNodeNetServer,
   NitroNodeTlsSocket,
   NitroNodeZlib,
+  NitroNodeUrl,
   SockAddr,
   FileStats,
   StatFs,

@@ -84,6 +84,8 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/timers/HybridTimers.cpp
         ../cpp/zlib/HybridZlib.cpp
         ../cpp/zlib/CompressionContexts.cpp
+        ../cpp/url/HybridUrl.cpp
+        ../deps/ada/ada.cpp
 
         # crypto
         ../cpp/crypto/argon2/HybridArgon2.cpp
@@ -149,6 +151,8 @@ include_directories(
         "../cpp/tls"
         "../cpp/timers"
         "../cpp/zlib"
+        "../cpp/url"
+        "../deps/ada"
 
         # crypto
         "../cpp/crypto/argon2"

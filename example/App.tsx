@@ -17,6 +17,7 @@ import { runTimersTests } from './timersTests';
 import { runCryptoTests } from './cryptoTests';
 import { runZlibTests } from './zlibTests';
 import { runUtilTests } from './utilTests';
+import { runUrlTests } from './urlTests';
 import {
   type MemoryReport,
   type MemorySample,
@@ -42,6 +43,7 @@ async function runTests(report: (result: StepResult) => void) {
   await runCryptoTests(step);
   await runZlibTests(step);
   await runUtilTests(step);
+  await runUrlTests(step);
 
   const summary =
     `${counts.passed} passed, ${counts.failed} failed, ` +

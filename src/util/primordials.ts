@@ -114,6 +114,8 @@ const special: Record<string, Any> = {
   globalThis,
   TypedArray,
   TypedArrayPrototype: TypedArray.prototype,
+  // the prototype of the built-in iterators (%IteratorPrototype%)
+  IteratorPrototype: Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]())),
   SafeMap: Map,
   SafeSet: Set,
   // A string's code point iterator, for `for (const c of new SafeStringIterator(s))`
@@ -127,6 +129,11 @@ const special: Record<string, Any> = {
     return array.length;
   },
   JSONStringify: JSON.stringify,
+  // ES2024, maybe not in Hermes: lone surrogates become U+FFFD
+  StringPrototypeToWellFormed: (str: string) =>
+    typeof (str as Any).toWellFormed === 'function'
+      ? (str as Any).toWellFormed()
+      : str.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd'),
   // Hermes may lack normalize() without Intl: then strings stay as they are
   StringPrototypeNormalize: (str: string, form?: string) =>
     typeof str.normalize === 'function' ? str.normalize(form) : str,

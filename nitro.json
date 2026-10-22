@@ -256,6 +256,12 @@
         "language": "c++",
         "implementationClassName": "HybridZlib"
       }
+    },
+    "NitroNodeUrl": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridUrl"
+      }
     }
   },
   "ignorePaths": [

@@ -78,6 +78,7 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridNitroNodeFsConstantsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeFsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeZlibSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeUrlSpec.cpp
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridNitroNodeDnsInitSpec.cpp
   ../nitrogen/generated/android/c++/JHybridNitroNodeOsSpec.cpp

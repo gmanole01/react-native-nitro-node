@@ -159,6 +159,10 @@ export function ERR_OUT_OF_RANGE(str: string, range: string, input: unknown): Ra
   return nodeError(new RangeError(msg), 'ERR_OUT_OF_RANGE');
 }
 
+export function ERR_INVALID_URI(): URIError {
+  return nodeError(new URIError('URI malformed'), 'ERR_INVALID_URI');
+}
+
 export function ERR_BUFFER_TOO_LARGE(max: number): RangeError {
   return nodeError(new RangeError(`Cannot create a Buffer larger than ${max} bytes`), 'ERR_BUFFER_TOO_LARGE');
 }
@@ -208,6 +212,7 @@ export const kValidateObjectNone = 0;
 export const kValidateObjectAllowNullable = 1 << 0;
 export const kValidateObjectAllowArray = 1 << 1;
 export const kValidateObjectAllowFunction = 1 << 2;
+export const kValidateObjectAllowObjects = kValidateObjectAllowArray | kValidateObjectAllowFunction;
 
 export function validateObject(value: unknown, name: string, options = kValidateObjectNone): void {
   if (options === kValidateObjectNone) {

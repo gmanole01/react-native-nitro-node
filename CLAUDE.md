@@ -1,7 +1,7 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `url`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
@@ -47,11 +47,12 @@ when adding or changing an API.
   (`deps/tlsuv/src/openssl/CMakeLists.txt` is patched for it).
 - `deps/`: libuv, c-ares, tlsuv (vendored); blake3, ncrypto, simdutf
   (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto;
-  brotli and zstd (git submodules), for zlib. `package.json`'s `files` leaves
+  brotli and zstd (git submodules), for zlib; ada (vendored, its release
+  single-header files), for url. `package.json`'s `files` leaves
   out their tests, tools and other languages.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
-  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `gcTests`,
+  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `urlTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
@@ -100,6 +101,14 @@ when adding or changing an API.
   destructuring would set it. `types.isProxy()` only knows the proxies made
   after the polyfill wrapped `Proxy` (`./proxies`). Everything else in `util`
   is the npm `util` package (Metro: `util` is a wrapped package).
+- **`url`** is Node 22's `lib/url.js` (`src/url/url.ts`) and
+  `lib/internal/url.js` (`src/url/internal.ts`), verbatim and `// @ts-nocheck`
+  like util's, on `src/url/binding.ts` (Node's `internalBinding('url')` API)
+  over the `NitroNodeUrl` HybridObject (`cpp/url/`, Node's `src/node_url.cc`
+  on ada, vendored in `deps/ada` at Node 22's version). Class static blocks
+  became static private fields (no Babel transform for them in React
+  Native's preset). `createObjectURL()` is React Native's. `querystring` is
+  Node's `lib/querystring.js` the same way.
 - **`Symbol.dispose`** on `Timeout` / `Immediate` is set on the prototype, and
   only when `Symbol.dispose` exists. Not a class member, not `Symbol.for`.
 - **Every fs native call is a pair**: `foo` (returns a `Promise`, runs on

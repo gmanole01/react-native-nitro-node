@@ -51,6 +51,7 @@ const MODULES = [
   'timers',
   'timers/promises',
   'tls',
+  'url',
   'util',
   'zlib',
 ];
