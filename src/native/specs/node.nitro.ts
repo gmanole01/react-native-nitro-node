@@ -5,6 +5,22 @@ export interface SockAddr {
   port: number;
 }
 
+/** One address of a network interface, as uv_interface_addresses() reports it. */
+export interface InterfaceAddress {
+  /** The interface's name, 'en0' or 'wlan0'. */
+  name: string;
+  address: string;
+  netmask: string;
+  /** 'IPv4', 'IPv6', or '<unknown>' for another address family. */
+  family: string;
+  /** The hardware address, '00:00:00:00:00:00' when there is none. */
+  mac: string;
+  /** Whether it is a loopback address. */
+  internal: boolean;
+  /** The IPv6 scope id; -1 for any other family. */
+  scopeid: number;
+}
+
 /** What statfs(2) reports about a file system, as Node's fs.StatFs. */
 export interface StatFs {
   type: number;
@@ -230,6 +246,12 @@ export interface NitroNodeUv extends HybridObject<{ android: 'c++'; ios: 'c++' }
   readonly UV_ENOEXEC: number;
 
   uv_strerror(error: number): string;
+  /**
+   * The addresses of the device's network interfaces, the native half of
+   * os.networkInterfaces(). Empty where the system can't list them, as Node;
+   * throws "[errno N]" on another failure.
+   */
+  uv_interface_addresses(): InterfaceAddress[];
 }
 
 /**

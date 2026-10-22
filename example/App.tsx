@@ -11,6 +11,7 @@ import { runHttpTests } from './httpTests';
 import { runAgentTests } from './agentTests';
 import { runGcTests } from './gcTests';
 import { runTlsTests } from './tlsTests';
+import { runOsTests } from './osTests';
 import { runFsTests } from './fsTests';
 import { runTimersTests } from './timersTests';
 import { runCryptoTests } from './cryptoTests';
@@ -33,6 +34,7 @@ async function runTests(report: (result: StepResult) => void) {
   await runAgentTests(step);
   await runTlsTests(step);
   await runGcTests(step);
+  await runOsTests(step);
   await runFsTests(step);
   await runTimersTests(step);
   await runCryptoTests(step);

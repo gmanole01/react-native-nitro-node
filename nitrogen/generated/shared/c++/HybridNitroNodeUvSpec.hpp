@@ -13,9 +13,12 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-
+// Forward declaration of `InterfaceAddress` to properly resolve imports.
+namespace margelo::nitro::node { struct InterfaceAddress; }
 
 #include <string>
+#include "InterfaceAddress.hpp"
+#include <vector>
 
 namespace margelo::nitro::node {
 
@@ -133,6 +136,7 @@ namespace margelo::nitro::node {
     public:
       // Methods
       virtual std::string uv_strerror(double error) = 0;
+      virtual std::vector<InterfaceAddress> uv_interface_addresses() = 0;
 
     protected:
       // Hybrid Setup

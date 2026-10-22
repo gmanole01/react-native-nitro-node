@@ -574,7 +574,8 @@ Callbacks are called on the library's `process.nextTick`, so they also arrive wh
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
 | `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
 | `os.EOL` | ✅ | |
-| Rest of `os` (`platform`, `cpus`, `networkInterfaces`, …) | ❌ | |
+| `os.networkInterfaces()` | ✅ | As Node's, from libuv: addresses by interface, with `cidr` and `scopeid`. The system hides MAC addresses from apps: on iOS most are `02:00:00:00:00:00`, on Android 11+ `00:00:00:00:00:00` |
+| Rest of `os` (`platform`, `cpus`, …) | ❌ | |
 | `path` | ✅ | The full POSIX implementation: `join`, `resolve`, `normalize`, `relative`, `dirname`, `basename`, `extname`, `isAbsolute`, `sep`, `delimiter`, `posix` |
 
 ### `process`
@@ -675,7 +676,7 @@ Know the limits:
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `crypto`: Node's API and WebCrypto's `subtle`, ported from react-native-quick-crypto
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
-- [x] `buffer`, `os` (`tmpdir`, `homedir`), `path` and `process` (`nextTick`) helpers
+- [x] `buffer`, `os` (`tmpdir`, `homedir`, `networkInterfaces`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 
 Have a use case that's missing? [Open an issue](https://github.com/gmanole01/react-native-nitro-node/issues).

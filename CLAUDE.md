@@ -48,7 +48,7 @@ when adding or changing an API.
   (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
-  `tlsTests`, `fsTests`, `timersTests`, `cryptoTests`, `gcTests`,
+  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)

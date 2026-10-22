@@ -58,23 +58,9 @@ export async function runFsTests(step: Step) {
   const root = `${os.tmpdir()}/nitro-node-fs-test-${Date.now()}`;
   const file = `${root}/a.txt`;
 
-  await step('os.tmpdir() and os.homedir() are usable', async () => {
-    const tmp = os.tmpdir();
-    const home = os.homedir();
-    for (const [name, dir] of [['tmpdir', tmp], ['homedir', home]]) {
-      if (!dir.startsWith('/')) {
-        throw new Error(`${name}() is not absolute: ${dir}`);
-      }
-      fs.accessSync(dir);
-    }
-    // only tmpdir() has to be writable: on an iOS device the sandbox root
-    // (homedir) is not, only folders such as Documents in it
-    fs.accessSync(tmp, fs.constants.W_OK);
-    if (tmp.length > 1 && tmp.endsWith('/')) {
-      throw new Error(`tmpdir() ends with a slash: ${tmp}`);
-    }
+  await step('fs: a fresh test directory under os.tmpdir()', async () => {
     fs.mkdirSync(root);
-    return `tmpdir ${tmp}, homedir ${home}`;
+    return root;
   });
 
   await step('fs default and named exports match', async () => {

@@ -2,6 +2,11 @@
 
 #include <uv.h>
 
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "HybridNitroNodeUvSpec.hpp"
 
 #define UV_ERROR(name)                 \
@@ -105,6 +110,56 @@ public:
   // Methods
   std::string uv_strerror(double error) override {
     return ::uv_strerror(static_cast<int>(error));
+  }
+
+  // As Node's GetInterfaceAddresses (src/node_os.cc).
+  std::vector<InterfaceAddress> uv_interface_addresses() override {
+    uv_interface_address_t* interfaces = nullptr;
+    int count = 0;
+    int err = ::uv_interface_addresses(&interfaces, &count);
+    if (err == UV_ENOSYS) {
+      return {};
+    }
+    if (err != 0) {
+      throw std::runtime_error("[errno " + std::to_string(err) + "]");
+    }
+
+    std::vector<InterfaceAddress> result;
+    result.reserve(count);
+    for (int i = 0; i < count; i++) {
+      const uv_interface_address_t& iface = interfaces[i];
+      char mac[18];
+      std::snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                    static_cast<unsigned char>(iface.phys_addr[0]),
+                    static_cast<unsigned char>(iface.phys_addr[1]),
+                    static_cast<unsigned char>(iface.phys_addr[2]),
+                    static_cast<unsigned char>(iface.phys_addr[3]),
+                    static_cast<unsigned char>(iface.phys_addr[4]),
+                    static_cast<unsigned char>(iface.phys_addr[5]));
+
+      char ip[INET6_ADDRSTRLEN] = {0};
+      char netmask[INET6_ADDRSTRLEN] = {0};
+      std::string family;
+      double scopeid = -1;
+      if (iface.address.address4.sin_family == AF_INET) {
+        uv_ip4_name(&iface.address.address4, ip, sizeof(ip));
+        uv_ip4_name(&iface.netmask.netmask4, netmask, sizeof(netmask));
+        family = "IPv4";
+      } else if (iface.address.address4.sin_family == AF_INET6) {
+        uv_ip6_name(&iface.address.address6, ip, sizeof(ip));
+        uv_ip6_name(&iface.netmask.netmask6, netmask, sizeof(netmask));
+        family = "IPv6";
+        scopeid = iface.address.address6.sin6_scope_id;
+      } else {
+        std::snprintf(ip, sizeof(ip), "<unknown sa family>");
+        family = "<unknown>";
+      }
+
+      result.emplace_back(iface.name, ip, netmask, family, mac,
+                          iface.is_internal != 0, scopeid);
+    }
+    uv_free_interface_addresses(interfaces, count);
+    return result;
   }
 };
 
