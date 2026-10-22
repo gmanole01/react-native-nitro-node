@@ -5,8 +5,17 @@ import type { Timeout } from '../timers';
 import { isIP } from '../ip';
 import { dnsError } from '../errors';
 import { rethrowLater } from '../utils';
-import { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE, validateOneOf } from '../node-errors';
-import { validateBoolean, validateFunction, validateNumber, validateString } from '../node-internals';
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+  validateOneOf,
+} from '../node-errors';
+import {
+  validateBoolean,
+  validateFunction,
+  validateNumber,
+  validateString,
+} from '../node-internals';
 import type { DnsException } from '../types';
 
 export type { DnsException };
@@ -56,7 +65,11 @@ export const V4MAPPED = NitroDns.AI_V4MAPPED;
 export type ResultOrder = 'verbatim' | 'ipv4first' | 'ipv6first';
 
 const validFamilies = [0, 4, 6];
-const validDnsOrders: readonly ResultOrder[] = ['verbatim', 'ipv4first', 'ipv6first'];
+const validDnsOrders: readonly ResultOrder[] = [
+  'verbatim',
+  'ipv4first',
+  'ipv6first',
+];
 
 let dnsOrder: ResultOrder = 'verbatim';
 
@@ -317,8 +330,15 @@ function validateHints(hints: number): void {
 }
 
 /** Node's handling of lookup()'s options object (or family number). */
-export function parseLookupOptions(options: number | LookupOptions | undefined): ParsedLookup {
-  const parsed: ParsedLookup = { family: 0, hints: 0, all: false, order: getDefaultResultOrder() };
+export function parseLookupOptions(
+  options: number | LookupOptions | undefined,
+): ParsedLookup {
+  const parsed: ParsedLookup = {
+    family: 0,
+    hints: 0,
+    all: false,
+    order: getDefaultResultOrder(),
+  };
   if (typeof options === 'number') {
     validateOneOf(options, 'family', validFamilies);
     parsed.family = options;
@@ -391,17 +411,29 @@ function configuredFamilies(): { v4: boolean; v6: boolean } {
   return { v4, v6 };
 }
 
-function ordered(addresses: LookupAddress[], order: ResultOrder): LookupAddress[] {
+function ordered(
+  addresses: LookupAddress[],
+  order: ResultOrder,
+): LookupAddress[] {
   if (order === 'verbatim') return addresses;
   const first = order === 'ipv4first' ? 4 : 6;
-  return [...addresses.filter(a => a.family === first), ...addresses.filter(a => a.family !== first)];
+  return [
+    ...addresses.filter((a) => a.family === first),
+    ...addresses.filter((a) => a.family !== first),
+  ];
 }
 
 function addressesOf(list: string[], family: number): LookupAddress[] {
-  return list.map(address => ({ address, family: family === 0 ? isIP(address) : family }));
+  return list.map((address) => ({
+    address,
+    family: family === 0 ? isIP(address) : family,
+  }));
 }
 
-const mapped = (a: LookupAddress): LookupAddress => ({ address: `::ffff:${a.address}`, family: 6 });
+const mapped = (a: LookupAddress): LookupAddress => ({
+  address: `::ffff:${a.address}`,
+  family: 6,
+});
 
 /**
  * The addresses of `hostname`, as getaddrinfo() with these hints would give
@@ -416,14 +448,14 @@ export function lookupAddresses(
     if (err) {
       // lookup() reports every failure as a getaddrinfo one, like Node, which
       // also calls "no data" ENOTFOUND (its DNSException)
-      const code = err.code === NODATA ? NOTFOUND : (err.code ?? 'EUNKNOWN');
+      const code = err.code === NODATA ? NOTFOUND : err.code ?? 'EUNKNOWN';
       callback(dnsError(code, 'getaddrinfo', hostname), []);
       return;
     }
     let addresses = found;
     if ((hints & ADDRCONFIG) !== 0) {
       const { v4, v6 } = configuredFamilies();
-      addresses = addresses.filter(a => (a.family === 4 ? v4 : v6));
+      addresses = addresses.filter((a) => (a.family === 4 ? v4 : v6));
     }
     if (addresses.length === 0) {
       callback(dnsError(NOTFOUND, 'getaddrinfo', hostname), []);
@@ -433,11 +465,17 @@ export function lookupAddresses(
   };
 
   if (family === 4) {
-    resolve4(hostname, { timeout }, (err, list) => done(err, addressesOf(list, 4)));
+    resolve4(hostname, { timeout }, (err, list) =>
+      done(err, addressesOf(list, 4)),
+    );
   } else if (family === 0) {
-    resolve46(hostname, { timeout }, (err, list) => done(err, addressesOf(list, 0)));
+    resolve46(hostname, { timeout }, (err, list) =>
+      done(err, addressesOf(list, 0)),
+    );
   } else if ((hints & V4MAPPED) === 0) {
-    resolve6(hostname, { timeout }, (err, list) => done(err, addressesOf(list, 6)));
+    resolve6(hostname, { timeout }, (err, list) =>
+      done(err, addressesOf(list, 6)),
+    );
   } else {
     // V4MAPPED: the IPv4 addresses, mapped, when there is no IPv6 one, or
     // after the IPv6 ones with ALL
@@ -501,7 +539,11 @@ export function lookup(
   if (typeof options === 'function') {
     callback = options;
     parsed = parseLookupOptions(undefined);
-  } else if (options !== undefined && typeof options !== 'object' && typeof options !== 'number') {
+  } else if (
+    options !== undefined &&
+    typeof options !== 'object' &&
+    typeof options !== 'number'
+  ) {
     validateFunction(arguments.length === 2 ? options : callback, 'callback');
     throw ERR_INVALID_ARG_TYPE('options', ['integer', 'object'], options);
   } else {
