@@ -1,6 +1,6 @@
 {
   "name": "react-native-nitro-node",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Node.js core modules for React Native, powered by Nitro Modules",
   "license": "MIT",
   "author": "George Manole",
