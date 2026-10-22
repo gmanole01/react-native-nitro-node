@@ -56,7 +56,7 @@ import {
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
   ERR_MISSING_ARGS,
-} from './errors';
+} from '../node-errors';
 import { kValidateObjectAllowObjects, validateFunction, validateObject } from '../node-internals';
 import {
   getConstructorOf,

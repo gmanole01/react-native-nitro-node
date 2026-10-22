@@ -1,5 +1,8 @@
-/** The Node errors of lib/internal/url.js and lib/url.js, with Node's messages. */
-import { inspect } from '../util/inspect';
+/**
+ * Node errors with Node's messages, the ones that need inspect() (see
+ * ./node-internals for the rest), and the validators built on them.
+ */
+import { inspect } from './util/inspect';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -77,4 +80,12 @@ export function ERR_NO_CRYPTO(): Error {
   return nodeError(new Error('Node.js is not compiled with OpenSSL crypto support'), 'ERR_NO_CRYPTO');
 }
 
-export { ERR_INVALID_ARG_TYPE } from '../node-internals';
+export { ERR_INVALID_ARG_TYPE } from './node-internals';
+
+/** internal/validators: `value` has to be one of `oneOf`. */
+export function validateOneOf(value: unknown, name: string, oneOf: readonly unknown[]): void {
+  if (!oneOf.includes(value)) {
+    const allowed = oneOf.map(v => (typeof v === 'string' ? `'${v}'` : String(v))).join(', ');
+    throw ERR_INVALID_ARG_VALUE(name, value, 'must be one of: ' + allowed);
+  }
+}

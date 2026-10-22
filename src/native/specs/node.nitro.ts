@@ -303,6 +303,10 @@ export interface NitroNodeOs
 
 // prettier-ignore
 export interface NitroNodeDns extends HybridObject<{ android: 'c++'; ios: 'c++' }> {
+  // getaddrinfo()'s AI_* flags, from the system's <netdb.h>, as Node's dns constants
+  readonly AI_ADDRCONFIG: number;
+  readonly AI_ALL: number;
+  readonly AI_V4MAPPED: number;
   resolve(hostname: string): Promise<string[]>;
   resolve4(hostname: string): Promise<string[]>;
   resolve6(hostname: string): Promise<string[]>;

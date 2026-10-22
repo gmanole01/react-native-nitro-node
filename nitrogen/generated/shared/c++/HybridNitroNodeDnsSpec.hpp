@@ -46,7 +46,9 @@ namespace margelo::nitro::node {
 
     public:
       // Properties
-      
+      virtual double getAI_ADDRCONFIG() = 0;
+      virtual double getAI_ALL() = 0;
+      virtual double getAI_V4MAPPED() = 0;
 
     public:
       // Methods

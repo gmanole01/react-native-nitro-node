@@ -57,7 +57,7 @@ import {
   CHAR_AT,
   CHAR_COLON,
 } from './constants';
-import { ERR_INVALID_ARG_TYPE, ERR_INVALID_URL } from './errors';
+import { ERR_INVALID_ARG_TYPE, ERR_INVALID_URL } from '../node-errors';
 import { validateObject, validateString } from '../node-internals';
 import { getOptionValue, spliceOne } from './internals';
 import {

@@ -35,6 +35,7 @@ const MODULES = [
   'crypto',
   'diagnostics_channel',
   'dns',
+  'dns/promises',
   'events',
   'fs',
   'http',

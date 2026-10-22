@@ -1,4 +1,5 @@
 import * as dns from 'react-native-nitro-node/dns';
+import dnsPromises from 'react-native-nitro-node/dns/promises';
 import * as net from 'react-native-nitro-node/net';
 import { Buffer } from 'buffer';
 import {
@@ -1408,7 +1409,6 @@ export async function runNetBehaviourTests(step: Step) {
   await step('dns checks its arguments', async () => {
     const callback = () => {};
     const checks: Array<[string, string, () => unknown]> = [
-      ["lookup('')", 'TypeError', () => dns.lookup('', callback)],
       ['lookup(host, 5)', 'TypeError', () => dns.lookup('example.com', 5, callback)],
       ["lookup(host, 'x')", 'TypeError', () => dns.lookup('example.com', 'x' as any, callback)],
       ['lookup without callback', 'TypeError', () => (dns.lookup as any)('example.com', {})],
@@ -1440,4 +1440,68 @@ export async function runNetBehaviourTests(step: Step) {
     }
     return `${checks.length} bad calls rejected`;
   });
+
+  await step('dns: flags, result order and promises, as Node', async () => {
+    const same = (label: string, actual: unknown, expected: unknown) => {
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`${label}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+      }
+    };
+    same('constants', [dns.ADDRCONFIG, dns.ALL, dns.V4MAPPED], [1024, 256, 2048]);
+    same('default order', dns.getDefaultResultOrder(), 'verbatim');
+    dns.setDefaultResultOrder('ipv4first');
+    same('set order', dns.getDefaultResultOrder(), 'ipv4first');
+    dns.setDefaultResultOrder('verbatim');
+
+    // Node's messages
+    const message = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (err: any) {
+        return `${err.code}: ${err.message}`;
+      }
+      return 'no error';
+    };
+    same('bad order', message(() => dns.setDefaultResultOrder('random' as any)),
+      "ERR_INVALID_ARG_VALUE: The argument 'dnsOrder' must be one of: 'verbatim', 'ipv4first', 'ipv6first'. Received 'random'");
+    same('bad hints', message(() => dns.lookup('example.com', { hints: 9999 }, () => {})),
+      "ERR_INVALID_ARG_VALUE: The argument 'hints' is invalid. Received 9999");
+    same('bad family', message(() => dns.lookup('example.com', 5, () => {})),
+      "ERR_INVALID_ARG_VALUE: The argument 'family' must be one of: 0, 4, 6. Received 5");
+
+    // an empty hostname answers null, as Node (with a DEP0118 warning)
+    const empty = await new Promise(resolve => dns.lookup('', (...args: unknown[]) => resolve(args)));
+    same("lookup('')", empty, [null, null, 4]);
+    same("promises.lookup('')", await dnsPromises.lookup(''), { address: null, family: 4 });
+    same('promises IP', await dnsPromises.lookup('10.0.0.1'), { address: '10.0.0.1', family: 4 });
+    if (dnsPromises.lookup !== dns.promises.lookup) {
+      throw new Error('dns/promises is not dns.promises');
+    }
+    return 'constants, order, errors, promises';
+  });
+
+  await step('dns: lookup order and V4MAPPED (needs network)', async log => {
+    const all = (options: dns.LookupOptions) =>
+      new Promise<dns.LookupAddress[]>((resolve, reject) =>
+        dns.lookup('example.com', { ...options, all: true }, (err, addresses: any) => (err ? reject(err) : resolve(addresses))),
+      );
+    const v4first = await all({ order: 'ipv4first' });
+    const v6first = await all({ order: 'ipv6first' });
+    log(`ipv4first: ${v4first.map(a => a.address).join(', ')}`);
+    if (v4first[0]?.family !== 4 || !v4first.some(a => a.family === 6)) {
+      throw new Error(`ipv4first: ${JSON.stringify(v4first)}`);
+    }
+    if (v6first[0]?.family !== 6) {
+      throw new Error(`ipv6first: ${JSON.stringify(v6first)}`);
+    }
+    const mapped = await all({ family: 6, hints: dns.V4MAPPED | dns.ALL });
+    if (!mapped.some(a => a.address.startsWith('::ffff:')) || mapped.some(a => a.family !== 6)) {
+      throw new Error(`V4MAPPED|ALL: ${JSON.stringify(mapped)}`);
+    }
+    const one = await dns.promises.lookup('example.com', { family: 4 });
+    if (one.family !== 4) {
+      throw new Error(`promises.lookup: ${JSON.stringify(one)}`);
+    }
+    return `${v4first.length} addresses, ${mapped.filter(a => a.address.startsWith('::ffff:')).length} mapped`;
+  }, 20000);
 }

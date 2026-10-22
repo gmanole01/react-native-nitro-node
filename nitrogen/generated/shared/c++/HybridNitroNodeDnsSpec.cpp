@@ -14,6 +14,9 @@ namespace margelo::nitro::node {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
+      prototype.registerHybridGetter("AI_ADDRCONFIG", &HybridNitroNodeDnsSpec::getAI_ADDRCONFIG);
+      prototype.registerHybridGetter("AI_ALL", &HybridNitroNodeDnsSpec::getAI_ALL);
+      prototype.registerHybridGetter("AI_V4MAPPED", &HybridNitroNodeDnsSpec::getAI_V4MAPPED);
       prototype.registerHybridMethod("resolve", &HybridNitroNodeDnsSpec::resolve);
       prototype.registerHybridMethod("resolve4", &HybridNitroNodeDnsSpec::resolve4);
       prototype.registerHybridMethod("resolve6", &HybridNitroNodeDnsSpec::resolve6);

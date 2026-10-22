@@ -7,7 +7,7 @@
  */
 import { NitroUrl as native } from '../native';
 import type { UrlParsed } from '../native/specs/node.nitro';
-import { ERR_INVALID_URL } from './errors';
+import { ERR_INVALID_URL } from '../node-errors';
 
 /** The parts' offsets of the last URL parse() or update() made, as Node's. */
 export const urlComponents = new Uint32Array(9);

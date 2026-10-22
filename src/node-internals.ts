@@ -196,9 +196,15 @@ export function validateFunction(value: unknown, name: string): asserts value is
   }
 }
 
-function validateNumber(value: unknown, name: string): asserts value is number {
+export function validateNumber(value: unknown, name: string): asserts value is number {
   if (typeof value !== 'number') {
     throw ERR_INVALID_ARG_TYPE(name, 'number', value);
+  }
+}
+
+export function validateBoolean(value: unknown, name: string): asserts value is boolean {
+  if (typeof value !== 'boolean') {
+    throw ERR_INVALID_ARG_TYPE(name, 'boolean', value);
   }
 }
 

@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
+`fs` · `net` · `tls` · `dns` · `dns/promises` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -103,7 +103,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `dns/promises`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -417,6 +417,8 @@ dns.resolve4('example.com', (err, addresses) => {
   // ['93.184.215.14']
 });
 
+const { address } = await dns.promises.lookup('example.com', { family: 4 });
+
 // Not part of Node: give queries a deadline, in milliseconds.
 dns.setDefaultTimeout(5000);
 ```
@@ -525,10 +527,12 @@ dns.lookup('nope.invalid', (err) => {
 
 | API | Status | Notes |
 |---|:---:|---|
-| `dns.lookup()` | ✅ | `family`, `all`, plus a `timeout` option |
+| `dns.lookup()` | ✅ | `family`, `all`, `hints`, `order`, `verbatim`, with Node's argument checks and errors, plus a `timeout` option. The query is c-ares's, not getaddrinfo(): `hints` are applied to its answer, `ADDRCONFIG` from the device's network interfaces |
+| `dns.ADDRCONFIG` / `ALL` / `V4MAPPED` | ✅ | Node's values on iOS and Android |
+| `dns.getDefaultResultOrder()` / `setDefaultResultOrder()` | ✅ | `'verbatim'` by default, as Node 22 |
 | `dns.resolve()` / `resolve4()` / `resolve6()` | ✅ | A and AAAA records, via c-ares |
 | Error code constants (`dns.NOTFOUND`, …) | ✅ | |
-| `dns.promises` | ❌ | Planned |
+| `dns.promises` / `dns/promises` | ✅ | `lookup()`, `resolve()`, `resolve4()`, `resolve6()`, the result order and the error codes |
 | `resolveMx`, `resolveTxt`, `resolveSrv`, `reverse`, … | ❌ | Planned |
 
 ### `timers`
@@ -714,7 +718,7 @@ Know the limits:
 - [ ] `getPeerCertificate()`, `authorizationError` and Node's certificate error codes
 - [ ] Certificate checks for IP addresses
 - [ ] TLS over an existing socket (`tls.connect({ socket })`), for STARTTLS and proxies
-- [ ] `dns.promises` and `fs.promises`
+- [ ] `fs.promises`
 - [ ] `readdir({ withFileTypes })` with `Dirent`
 - [ ] `fs.watch` and `fs.watchFile`
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
@@ -728,7 +732,7 @@ Know the limits:
 
 ### Done
 - [x] `net`: TCP client and server on libuv
-- [x] `dns`: `lookup` and `resolve4`/`resolve6` on c-ares
+- [x] `dns`: `lookup` (with Node's options) and `resolve4`/`resolve6` on c-ares, and `dns.promises`
 - [x] `http`: client and server
 - [x] `http.Agent` / `https.Agent`: connection pooling and keep-alive reuse
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
