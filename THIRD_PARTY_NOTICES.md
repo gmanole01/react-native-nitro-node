@@ -7,7 +7,7 @@ licenses.
 | Software | Where | License |
 |---|---|---|
 | [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) | `src/crypto/`, `cpp/crypto/` (ported) | MIT |
-| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), ported | MIT |
+| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), `src/util/inspect.ts`, `src/util/comparisons.ts` and `promisify()` (from `lib/internal/util/`), ported | MIT |
 | [ncrypto](https://github.com/nodejs/ncrypto) | `deps/ncrypto` | MIT |
 | [simdutf](https://github.com/simdutf/simdutf) | `deps/simdutf` | MIT (or Apache 2.0, at your option) |
 | [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | `deps/blake3` | CC0 1.0 (or Apache 2.0, or Apache 2.0 with LLVM exception) |

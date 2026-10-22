@@ -258,6 +258,18 @@
         "default": "./lib/commonjs/tls/index.js"
       }
     },
+    "./util": {
+      "source": "./src/util/index.ts",
+      "react-native": "./src/util/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/util/index.d.ts",
+        "default": "./lib/module/util/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/util/index.d.ts",
+        "default": "./lib/commonjs/util/index.js"
+      }
+    },
     "./zlib": {
       "source": "./src/zlib/index.ts",
       "react-native": "./src/zlib/index.ts",

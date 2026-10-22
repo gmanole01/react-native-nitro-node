@@ -47,7 +47,7 @@ import {
   validateFiniteNumber,
   validateFunction,
   validateUint32,
-} from './internals';
+} from '../node-internals';
 
 /* eslint-disable @typescript-eslint/no-shadow, no-new-func */
 type Any = any;

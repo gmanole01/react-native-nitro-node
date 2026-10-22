@@ -1,7 +1,9 @@
 /**
  * Patches the globals that packages written for Node or the web expect:
  * `global.Buffer` (this library's `buffer`) and `global.crypto` (its
- * `crypto`, with `subtle`, `getRandomValues` and `randomUUID`).
+ * `crypto`, with `subtle`, `getRandomValues` and `randomUUID`). It also wraps
+ * the global `Proxy` so that util.types.isProxy() can tell the proxies made
+ * from then on.
  *
  * Import it first, before anything that uses them, in the app's entry file:
  *
@@ -11,5 +13,7 @@
  * later, from a component, would be too late for them.
  */
 import { install } from '../crypto';
+import { installProxyTracking } from '../util/proxies';
 
+installProxyTracking();
 install();

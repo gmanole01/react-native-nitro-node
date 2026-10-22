@@ -50,6 +50,7 @@ const MODULES = [
   'timers',
   'timers/promises',
   'tls',
+  'util',
   'zlib',
 ];
 
@@ -63,6 +64,7 @@ const WRAPPED_PACKAGES = {
   events: 'events',
   punycode: 'punycode',
   stream: 'readable-stream',
+  util: 'util',
 };
 
 /**

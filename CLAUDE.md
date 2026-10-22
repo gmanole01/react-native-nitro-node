@@ -1,7 +1,7 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers` (and `timers/promises`), `zlib`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`timers` (and `timers/promises`), `zlib`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
@@ -29,7 +29,8 @@ when adding or changing an API.
   The user removed `getPackedSettings`/`getUnpackedSettings`; don't add them back.
 - `src/polyfill/index.ts`: `react-native-nitro-node/polyfill`, a side-effect
   import (first in the app's entry file) that sets `global.Buffer` and
-  `global.crypto` through crypto's `install()`. The example imports it first
+  `global.crypto` through crypto's `install()`, and wraps `Proxy` for
+  util.types.isProxy(). The example imports it first
   in `example/index.js`.
 - `src/utils.ts`, `src/errors.ts` (`fsError`, errno → Node error codes).
 - `cpp/core/`: `UVLoop` (the single libuv loop on its own thread, `post` /
@@ -50,7 +51,7 @@ when adding or changing an API.
   out their tests, tools and other languages.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
-  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `gcTests`,
+  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
@@ -87,6 +88,16 @@ when adding or changing an API.
   copy the input and the output across, as JS buffers can't be touched off
   the JS thread. Brotli and zstd give Node's exact bytes, gzip/deflate can
   differ (another zlib), so zlib tests decompress rather than compare bytes.
+- **`util`** is partly Node 22's own code: `src/util/inspect.ts`
+  (`lib/internal/util/inspect.js`) and `src/util/comparisons.ts`
+  (`lib/internal/util/comparisons.js`), kept verbatim and `// @ts-nocheck`,
+  on `./primordials` (Node's primordials, built from their names) and
+  `./internals` (what V8 gives Node, in JavaScript: brand checks, and markers
+  where Hermes can't: promise state, iterator entries). Plain globals are not
+  taken from primordials there: Babel's module code uses `Object` before the
+  destructuring would set it. `types.isProxy()` only knows the proxies made
+  after the polyfill wrapped `Proxy` (`./proxies`). Everything else in `util`
+  is the npm `util` package (Metro: `util` is a wrapped package).
 - **`Symbol.dispose`** on `Timeout` / `Immediate` is set on the prototype, and
   only when `Symbol.dispose` exists. Not a class member, not `Symbol.for`.
 - **Every fs native call is a pair**: `foo` (returns a `Promise`, runs on

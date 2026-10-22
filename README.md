@@ -6,7 +6,7 @@
 
 **Network** `net` · `tls` · `dns` · `http` · `https`<br>
 **Files and system** `fs` · `os` · `path` · `process`<br>
-**Data** `crypto` · `zlib` · `buffer` · `stream` · `events` · `querystring` · `punycode`<br>
+**Data** `crypto` · `zlib` · `buffer` · `stream` · `events` · `util` · `querystring` · `punycode`<br>
 **Scheduling** `timers` · `timers/promises`<br>
 **Stubs, so packages that import them load** `http2` · `diagnostics_channel`
 
@@ -107,7 +107,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises`, `tls` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises`, `tls`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -143,6 +143,8 @@ import { AppRegistry } from 'react-native';
 ```
 
 It sets `global.Buffer` to this library's `Buffer`, the same class `require('buffer')` gets through the Metro plugin, and `global.crypto` to its `crypto`, which has the Web Crypto API's `subtle`, `getRandomValues()` and `randomUUID()`. It has to come before the other imports: some packages read `Buffer` while their own module loads.
+
+It also wraps the global `Proxy` (and `Proxy.revocable`), so that [`util.types.isProxy()`](#util) can tell the proxies made from then on: JavaScript can't tell a proxy from its target, and Hermes has no API for it. Proxies keep working as before; a WeakMap remembers each one's target and handler.
 
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
@@ -569,6 +571,20 @@ The [react-native-quick-crypto](https://github.com/margelo/react-native-quick-cr
 
 Callbacks are called on the library's `process.nextTick`, so they also arrive while the app is in the background.
 
+### `util`
+
+Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, `lib/internal/util/comparisons.js`, `promisify()`): the same output, options and errors as Node. The rest of `util` is the [`util`](https://www.npmjs.com/package/util) npm package, which packages got for `require('util')` before.
+
+| API | Status | Notes |
+|---|:---:|---|
+| `util.inspect()` / `InspectOptions` | ✅ | Every option (`depth`, `colors`, `compact`, `breakLength`, `sorted`, `getters`, `showHidden`, `showProxy`, `maxArrayLength`, `maxStringLength`, `numericSeparator`), `inspect.custom`, `inspect.defaultOptions`. Hermes can't show a promise's state (`Promise { <unknown> }`), the entries of a Map or Set iterator, or WeakMap/WeakSet entries with `showHidden` (`<items unknown>`). Classes and async functions that Babel compiled show as plain functions |
+| `util.format()` / `util.formatWithOptions()` | ✅ | Node's, on `inspect()` |
+| `util.isDeepStrictEqual()` | ✅ | Node's comparison: prototypes, cycles, Maps, Sets, typed arrays, boxed primitives, errors, … |
+| `util.promisify()` / `promisify.custom` | ✅ | |
+| `util.types.isProxy()` | ✅ | For proxies made after [`react-native-nitro-node/polyfill`](#globals) ran; without it, always `false` |
+| Other `util.types.*`, `inherits`, `deprecate`, `debuglog`, `callbackify`, `is*()` | ✅ | The npm `util` package's |
+| `TextEncoder` / `TextDecoder`, `parseArgs`, `styleText`, `MIMEType`, … | ❌ | |
+
 ### `events`, `stream`, `querystring`, `punycode`, `buffer`, `os`, `path`
 
 | API | Status | Notes |
@@ -683,7 +699,8 @@ Know the limits:
 - [ ] `http2`: client and server (only stubs for now)
 - [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
-- [ ] `url` and `util` entry points, for a fuller drop-in `node:*` replacement
+- [ ] A `url` entry point, for a fuller drop-in `node:*` replacement
+- [ ] The rest of `util` in Node's own code (`TextEncoder`/`TextDecoder`, `parseArgs`, `styleText`, …)
 
 ### Done
 - [x] `net`: TCP client and server on libuv
@@ -699,6 +716,7 @@ Know the limits:
 - [x] `crypto`: Node's API and WebCrypto's `subtle`, ported from react-native-quick-crypto
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
 - [x] `zlib`: Node's zlib, ported, with Brotli and zstd
+- [x] `util`: Node's `inspect()`, `format()`, `isDeepStrictEqual()`, `promisify()` and `types.isProxy()`
 - [x] `buffer`, `os` (`tmpdir`, `homedir`, `networkInterfaces`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 
@@ -706,7 +724,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init

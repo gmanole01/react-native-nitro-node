@@ -1,6 +1,7 @@
 /**
- * What Node's lib/zlib.js takes from Node's internals (internal/errors,
- * internal/validators, internal/util), ported with the same messages.
+ * What the ports of Node's own JS (zlib, util) take from Node's internals
+ * (internal/errors, internal/validators, internal/util), with the same
+ * messages.
  */
 
 // internal/errors: kTypes and classRegExp, for ERR_INVALID_ARG_TYPE
@@ -194,6 +195,41 @@ export function validateFunction(value: unknown, name: string): asserts value is
 function validateNumber(value: unknown, name: string): asserts value is number {
   if (typeof value !== 'number') {
     throw ERR_INVALID_ARG_TYPE(name, 'number', value);
+  }
+}
+
+export function validateString(value: unknown, name: string): asserts value is string {
+  if (typeof value !== 'string') {
+    throw ERR_INVALID_ARG_TYPE(name, 'string', value);
+  }
+}
+
+export const kValidateObjectNone = 0;
+export const kValidateObjectAllowNullable = 1 << 0;
+export const kValidateObjectAllowArray = 1 << 1;
+export const kValidateObjectAllowFunction = 1 << 2;
+
+export function validateObject(value: unknown, name: string, options = kValidateObjectNone): void {
+  if (options === kValidateObjectNone) {
+    if (value === null || Array.isArray(value)) {
+      throw ERR_INVALID_ARG_TYPE(name, 'Object', value);
+    }
+    if (typeof value !== 'object') {
+      throw ERR_INVALID_ARG_TYPE(name, 'Object', value);
+    }
+  } else {
+    const nullable = (options & kValidateObjectAllowNullable) !== 0;
+    if (!nullable && value === null) {
+      throw ERR_INVALID_ARG_TYPE(name, 'Object', value);
+    }
+    if ((options & kValidateObjectAllowArray) === 0 && Array.isArray(value)) {
+      throw ERR_INVALID_ARG_TYPE(name, 'Object', value);
+    }
+    const allowFunction = (options & kValidateObjectAllowFunction) !== 0;
+    const type = typeof value;
+    if (type !== 'object' && (!allowFunction || type !== 'function')) {
+      throw ERR_INVALID_ARG_TYPE(name, 'Object', value);
+    }
   }
 }
 
