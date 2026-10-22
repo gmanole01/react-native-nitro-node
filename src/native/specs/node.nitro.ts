@@ -428,3 +428,59 @@ export interface NitroNodeFs extends HybridObject<{ android: 'c++', ios: 'c++' }
   fstat(fd: number): Promise<FileStats>;
   fstatSync(fd: number): FileStats;
 }
+
+/** A zlib error, as Node's zlib reports it to the stream (its onerror). */
+export interface ZlibError {
+  /** zlib's message ('incorrect header check'), or Node's ('unexpected end of file'). */
+  message: string;
+  /** The zlib status, Z_DATA_ERROR (-3) ...: the error's `errno` (a C macro, so not the name here). */
+  status: number;
+  /** Its name, 'Z_DATA_ERROR' ... */
+  code: string;
+}
+
+/** What one write step left: as Node's writeState, plus the async output. */
+export interface ZlibWriteResult {
+  /** Bytes of the output range not filled. */
+  availOut: number;
+  /** Bytes of the input range not consumed. */
+  availIn: number;
+  /**
+   * write() only: the bytes produced (outLen - availOut), to copy into the
+   * stream's output buffer. JS buffers can't be written off the JS thread.
+   */
+  output?: ArrayBuffer;
+  /** Set when the step failed: the stream can't go on. */
+  error?: ZlibError;
+}
+
+/**
+ * One compression stream, the native half of Node's zlib (its
+ * CompressionStream in src/node_zlib.cc): one HybridObject per Gzip, Inflate,
+ * BrotliCompress, ZstdDecompress, ... stream, on zlib, Brotli or zstd. JS
+ * runs one write at a time; close() during an async write closes the stream
+ * once the write is done.
+ */
+// prettier-ignore
+export interface NitroNodeZlib extends HybridObject<{ android: 'c++'; ios: 'c++' }> {
+  /** ZLIB_VERNUM of the zlib it is built with. */
+  readonly version: number;
+  /** Node's mode (constants.DEFLATE ... UNZIP) and options. zlib itself starts on the first write. */
+  init(mode: number, windowBits: number, level: number, memLevel: number, strategy: number, dictionary?: ArrayBuffer): void;
+  /**
+   * A Brotli stream instead (constants.BROTLI_ENCODE or BROTLI_DECODE), with
+   * Node's params array: params[key] is the value, 2^32 - 1 when not set.
+   */
+  initBrotli(mode: number, params: number[]): ZlibError | undefined;
+  /** A zstd stream instead (constants.ZSTD_COMPRESS or ZSTD_DECOMPRESS), as initBrotli(). */
+  initZstd(mode: number, params: number[], pledgedSrcSize?: number, dictionary?: ArrayBuffer): ZlibError | undefined;
+  /** One compression step on Nitro's thread pool, on a copy of the input range. */
+  write(flush: number, input: ArrayBuffer, inOff: number, inLen: number, outLen: number): Promise<ZlibWriteResult>;
+  /** The same on the calling thread, writing into `output` directly. */
+  writeSync(flush: number, input: ArrayBuffer, inOff: number, inLen: number, output: ArrayBuffer, outOff: number, outLen: number): ZlibWriteResult;
+  params(level: number, strategy: number): ZlibError | undefined;
+  reset(): ZlibError | undefined;
+  close(): void;
+  /** zlib's crc32() of [offset, offset + length) of `data`, continuing from `value`. */
+  crc32(data: ArrayBuffer, offset: number, length: number, value: number): number;
+}

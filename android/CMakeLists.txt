@@ -48,6 +48,26 @@ set(CARES_BUILD "${CMAKE_BINARY_DIR}/cares_build")
 add_subdirectory(${CARES_SRC} ${CARES_BUILD})
 
 # Define C++ library and add all sources
+# Brotli and zstd, for zlib: static archives inside this .so, their symbols
+# kept out of its dynamic table by --exclude-libs (see below)
+file(GLOB BROTLI_SOURCES
+        "../deps/brotli/c/common/*.c"
+        "../deps/brotli/c/dec/*.c"
+        "../deps/brotli/c/enc/*.c")
+add_library(nitro_brotli STATIC ${BROTLI_SOURCES})
+target_include_directories(nitro_brotli PUBLIC "../deps/brotli/c/include")
+set_target_properties(nitro_brotli PROPERTIES C_VISIBILITY_PRESET hidden POSITION_INDEPENDENT_CODE ON)
+
+file(GLOB ZSTD_SOURCES
+        "../deps/zstd/lib/common/*.c"
+        "../deps/zstd/lib/compress/*.c"
+        "../deps/zstd/lib/decompress/*.c")
+add_library(nitro_zstd STATIC ${ZSTD_SOURCES})
+target_include_directories(nitro_zstd PUBLIC "../deps/zstd/lib")
+# no x86 assembly, no legacy formats; multithreading (ZSTD_c_nbWorkers), as Node
+target_compile_definitions(nitro_zstd PRIVATE ZSTD_DISABLE_ASM=1 ZSTD_LEGACY_SUPPORT=0 ZSTD_MULTITHREAD=1)
+set_target_properties(nitro_zstd PROPERTIES C_VISIBILITY_PRESET hidden POSITION_INDEPENDENT_CODE ON)
+
 add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/cpp-adapter.cpp
         ../cpp/core/UVLoop.cpp
@@ -62,6 +82,8 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/tls/HybridTlsServer.cpp
         ../cpp/tls/HybridTlsSecureContext.cpp
         ../cpp/timers/HybridTimers.cpp
+        ../cpp/zlib/HybridZlib.cpp
+        ../cpp/zlib/CompressionContexts.cpp
 
         # crypto
         ../cpp/crypto/argon2/HybridArgon2.cpp
@@ -126,6 +148,7 @@ include_directories(
         "../cpp/fs"
         "../cpp/tls"
         "../cpp/timers"
+        "../cpp/zlib"
 
         # crypto
         "../cpp/crypto/argon2"
@@ -176,6 +199,9 @@ target_link_libraries(
         ${PACKAGE_NAME}
         ${LOG_LIB}
         android
+        z # <-- the system zlib, for zlib
+        nitro_brotli # <-- Brotli, for zlib
+        nitro_zstd # <-- zstd, for zlib
         uv
         tlsuv
         c-ares

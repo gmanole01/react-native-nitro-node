@@ -2,9 +2,13 @@
 
 # react-native-nitro-node
 
-**Node.js core modules for React Native, running on a real libuv event loop.**
+**Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `events` · `stream` · `timers` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process`
+**Network** `net` · `tls` · `dns` · `http` · `https`<br>
+**Files and system** `fs` · `os` · `path` · `process`<br>
+**Data** `crypto` · `zlib` · `buffer` · `stream` · `events` · `querystring` · `punycode`<br>
+**Scheduling** `timers` · `timers/promises`<br>
+**Stubs, so packages that import them load** `http2` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -15,7 +19,7 @@
 
 ---
 
-Write networking and file system code for React Native the way you would for Node.js: open raw TCP sockets, run an HTTP server on the device, resolve DNS names, or read and write files. The APIs are the ones you already know from Node.
+Use Node.js APIs in React Native: open raw TCP and TLS sockets, run an HTTP server on the device, make HTTP requests with connection pooling, resolve DNS names, read and write files, hash, encrypt and sign, and compress with gzip, Brotli or zstd. They are Node's APIs, with Node's options, events and error codes, so npm packages written for Node work as they are: the [Metro plugin](#metro) points their `require('net')`, `require('node:zlib')`, … at this library.
 
 ```ts
 import net from 'react-native-nitro-node/net';
@@ -30,21 +34,24 @@ server.listen(8080, '0.0.0.0', () => {
 });
 ```
 
-Underneath is **[libuv](https://libuv.org)**, the same C library behind Node.js's own event loop, and **[OpenSSL](https://www.openssl.org)** for TLS, like in Node. The library compiles them into your app and exposes them to JavaScript through **[Nitro Modules](https://nitro.margelo.com)**, with direct JSI bindings and no bridge.
+Underneath is **[libuv](https://libuv.org)**, the C library behind Node.js's own event loop, with **[c-ares](https://c-ares.org)** for DNS, **[OpenSSL 3](https://www.openssl.org)** for TLS and crypto, and zlib, **[Brotli](https://github.com/google/brotli)** and **[zstd](https://github.com/facebook/zstd)** for compression, as in Node. The library compiles them into your app and exposes them to JavaScript through **[Nitro Modules](https://nitro.margelo.com)**, with direct JSI bindings and no bridge.
 
 ## ✨ Features
 
-- 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are backed by libuv `uv_tcp_t` handles, not by a WebSocket or a platform HTTP stack.
-- 🌐 **HTTP client and server:** an `http` module with streaming bodies, chunked encoding, keep-alive and upgrade/CONNECT events.
-- 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, with certificate verification against the system's trust store, SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
+- 🧩 **Drop-in for Node packages:** a [Metro plugin](#metro) (`withNitroNode`) redirects `fs`, `node:net`, `zlib`, … in your dependencies to this library, and a [polyfill](#globals) sets `global.Buffer` and `global.crypto` for packages that use them without importing.
+- 🌙 **Keeps running in the background:** everything runs on a libuv loop on its own thread, including the timers. React Native pauses its own timers in the background; these, `process.nextTick`, and the sockets, requests and callbacks built on them go on for as long as the system lets the app run.
+- 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are libuv `uv_tcp_t` handles, not a WebSocket or a platform HTTP stack. A server on the device accepts connections from the network.
+- 🌐 **HTTP client and server:** `http` with streaming bodies, chunked encoding, keep-alive, upgrade/CONNECT and Node's server timeouts. `http.Agent` / `https.Agent` pool and reuse connections, with Node 19+'s keep-alive `globalAgent`.
+- 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, verified against the system's trust store, with SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
+- 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` on **[c-ares](https://c-ares.org)**, which Node also uses.
 - 🔑 **Crypto:** Node's `crypto` (hashes, HMAC, ciphers, key pairs, sign/verify, KDFs, random, X.509) and WebCrypto's `subtle`, on **OpenSSL 3**, ported from [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto).
-- 📁 **File system:** `fs` with files, file descriptors, directories, `stat` and `statfs`, in callback and `*Sync` forms. The callback forms run off the JS thread.
-- ⏱️ **Timers that keep running in the background:** `setTimeout`, `setInterval` and `setImmediate` run on the libuv loop, so they go on while React Native's own timers are paused. `process.nextTick` and the other modules use them too.
-- 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` are powered by **[c-ares](https://c-ares.org)**, which Node also uses.
-- 🧵 **Off the JS thread:** all I/O runs on a dedicated libuv loop thread. Results are delivered back to JavaScript as events.
-- 📦 **Node-style imports:** every module supports both `import net from '…/net'` and `import { connect } from '…/net'`.
+- 🗜️ **Compression:** Node's `zlib`, ported from Node: gzip and deflate on the system's zlib, **Brotli** and **zstd** on the versions Node bundles, with Node's exact output.
+- 📁 **File system:** `fs` with files, file descriptors, directories, `stat` and `statfs`, in callback and `*Sync` forms.
+- ⏱️ **Timers:** `setTimeout`, `setInterval`, `setImmediate` and `timers/promises` (with `AbortSignal` and `for await` intervals), with Node's timing rules.
+- 🧵 **Off the JS thread:** I/O, DNS, TLS, file system callbacks and async compression run off the JS thread. Results come back to JavaScript as events and callbacks.
+- 🧰 **Node-compatible behavior:** Node's argument checks, `ERR_*` codes and messages, and errors with `code`, `errno` and `syscall` (`ECONNREFUSED`, `ENOTFOUND`, …), mapped from libuv, c-ares, zlib, Brotli and zstd. Where it differs from Node, the [compatibility tables](#-nodejs-api-compatibility) say so.
+- 📦 **Node-style imports:** every module has both a default and named exports: `import net from '…/net'` and `import { connect } from '…/net'`.
 - 🟦 **TypeScript first:** written in TypeScript, with typed event maps (`socket.on('data', (buf) => …)` knows `buf` is a `Buffer`).
-- 🧰 **Node-compatible errors:** errors carry Node's `code`, `errno` and `syscall` fields (`ECONNREFUSED`, `ENOTFOUND`, …), mapped from libuv and c-ares.
 
 ## 📦 Installation
 
@@ -100,7 +107,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises` and `tls`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises`, `tls` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -590,12 +597,27 @@ Callbacks are called on the library's `process.nextTick`, so they also arrive wh
 | `chdir()` / `binding()` | ❌ | Throw |
 | `exit()`, `pid`, `platform`, `memoryUsage()`, `hrtime()`, … | ❌ | |
 
+### `zlib`
+
+Node 22's `lib/zlib.js`, ported: the same streams, options, flush handling, errors and messages. gzip and deflate run on the system's zlib (iOS's and Android's); Brotli 1.1.0 and zstd 1.5.7, the versions Node 22 bundles, are built in. The callback functions and streams compress and decompress on a worker thread; the `*Sync` ones on the calling thread, as in Node.
+
+| API | Status | Notes |
+|---|:---:|---|
+| `createGzip()` / `createGunzip()` / `createDeflate()` / `createInflate()` / `createDeflateRaw()` / `createInflateRaw()` / `createUnzip()` | ✅ | Transform streams with Node's options: `level`, `windowBits`, `memLevel`, `strategy`, `dictionary`, `chunkSize`, `flush`, `finishFlush`, `info`, `maxOutputLength`, `rejectGarbageAfterEnd`. `flush()`, `params()`, `reset()`, `close()`, `bytesWritten` |
+| `gzip()` / `gunzip()` / `deflate()` / `inflate()` / `deflateRaw()` / `inflateRaw()` / `unzip()` (+ `Sync`) | ✅ | Strings, Buffers, TypedArrays, DataViews and ArrayBuffers. Multi-member gzip, and `unzip` detects gzip or deflate |
+| `Gzip`, `Deflate`, … classes | ✅ | With or without `new`, as in Node |
+| `crc32()` | ✅ | |
+| `constants` / `codes` | ✅ | Node 22's; `ZLIB_VERNUM` is the system zlib's |
+| Brotli: `createBrotliCompress()` / `createBrotliDecompress()`, `brotliCompress()` / `brotliDecompress()` (+ `Sync`) | ✅ | Node's `params` (`BROTLI_PARAM_*`, `BROTLI_DECODER_PARAM_*`), errors and codes. The same compressed bytes as Node |
+| zstd: `createZstdCompress()` / `createZstdDecompress()`, `zstdCompress()` / `zstdDecompress()` (+ `Sync`) | ✅ | Node's `params` (`ZSTD_c_*`, `ZSTD_d_*`, including `nbWorkers`), `pledgedSrcSize` and `dictionary`. The same compressed bytes as Node. Node still marks zstd experimental |
+| Compressed bytes, gzip and deflate | 🟡 | Valid and readable by any zlib, but they can differ from Node's for the same input: Node bundles its own zlib, this library uses the system's |
+
 ## 🏗️ How it works
 
 ```mermaid
 flowchart TB
     subgraph JS["JavaScript (Hermes)"]
-        API["net · tls · http · https · dns · fs · timers<br/><sub>Node-compatible TypeScript API</sub>"]
+        API["net · tls · http · https · dns · fs · timers · zlib<br/><sub>Node-compatible TypeScript API</sub>"]
     end
 
     subgraph Native["Native (C++)"]
@@ -676,6 +698,7 @@ Know the limits:
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
 - [x] `crypto`: Node's API and WebCrypto's `subtle`, ported from react-native-quick-crypto
 - [x] `fs`: files, file descriptors, directories, `stat` / `lstat` / `fstat` and `statfs`
+- [x] `zlib`: Node's zlib, ported, with Brotli and zstd
 - [x] `buffer`, `os` (`tmpdir`, `homedir`, `networkInterfaces`), `path` and `process` (`nextTick`) helpers
 - [x] Per-module subpath imports with default and named exports
 
@@ -683,7 +706,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `timers` and `process`, `crypto`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init

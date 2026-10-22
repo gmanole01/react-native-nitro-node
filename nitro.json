@@ -250,6 +250,12 @@
         "language": "c++",
         "implementationClassName": "HybridX509Certificate"
       }
+    },
+    "NitroNodeZlib": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridZlib"
+      }
     }
   },
   "ignorePaths": [

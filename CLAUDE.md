@@ -1,7 +1,7 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers` (and `timers/promises`), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`timers` (and `timers/promises`), `zlib`, `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
@@ -45,10 +45,12 @@ when adding or changing an API.
   (`opensslstatic::ssl/crypto`), which tlsuv also links
   (`deps/tlsuv/src/openssl/CMakeLists.txt` is patched for it).
 - `deps/`: libuv, c-ares, tlsuv (vendored); blake3, ncrypto, simdutf
-  (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto.
+  (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto;
+  brotli and zstd (git submodules), for zlib. `package.json`'s `files` leaves
+  out their tests, tools and other languages.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
-  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `gcTests`,
+  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
@@ -69,6 +71,22 @@ when adding or changing an API.
   `@craftzdog/react-native-buffer`, our `process.nextTick` and timers, no
   `react-native-quick-base64`, no Expo plugin. Don't fix its bugs or refactor
   it; keep it close to the original.
+- **`zlib`** is Node 22's `lib/zlib.js` (`src/zlib/zlib.ts`), kept close to the
+  original, on `src/zlib/binding.ts`, which gives it Node's internal binding API
+  (`init`, `write`, `writeSync`, `params`, `reset`, `close`, `onerror`) over the
+  `NitroNodeZlib` HybridObject (`cpp/zlib/`, a port of Node's
+  `CompressionStream` and its contexts in `src/node_zlib.cc`: `HybridZlib` is
+  the stream, `CompressionContexts` the engines). gzip/deflate use the system
+  zlib (`-lz`); Brotli and zstd are git submodules in `deps/` at the versions
+  Node 22 bundles (1.1.0, 1.5.7), built from their `.c` files only (Android:
+  static archives with hidden symbols; iOS: `source_files`, headers kept out
+  of the header map) with zstd's `ZSTD_MULTITHREAD`, as Node. iOS also needs
+  `ZSTD_STATIC_LINKING_ONLY` in the pod's definitions: Clang modules import
+  zstd.h through zstd's `module.modulemap`, ignoring its sources' own
+  `#define`. Async writes
+  copy the input and the output across, as JS buffers can't be touched off
+  the JS thread. Brotli and zstd give Node's exact bytes, gzip/deflate can
+  differ (another zlib), so zlib tests decompress rather than compare bytes.
 - **`Symbol.dispose`** on `Timeout` / `Immediate` is set on the prototype, and
   only when `Symbol.dispose` exists. Not a class member, not `Symbol.for`.
 - **Every fs native call is a pair**: `foo` (returns a `Promise`, runs on

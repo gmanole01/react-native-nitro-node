@@ -48,6 +48,7 @@
 #include "HybridUtils.hpp"
 #include "HybridVerifyHandle.hpp"
 #include "HybridX509Certificate.hpp"
+#include "HybridZlib.hpp"
 
 @interface NitroNodeAutolinking : NSObject
 @end
@@ -398,6 +399,15 @@
                     "The HybridObject \"HybridX509Certificate\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridX509Certificate>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "NitroNodeZlib",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridZlib>,
+                    "The HybridObject \"HybridZlib\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridZlib>();
     }
   );
 }

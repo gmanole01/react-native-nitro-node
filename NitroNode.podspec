@@ -154,6 +154,17 @@ Pod::Spec.new do |s|
     "deps/simdutf/src/simdutf.cpp",
     "deps/blake3/c/*.{h,c}",
     "deps/fastpbkdf2/*.{h,c}",
+
+    # zlib: Brotli and zstd, only their .c files. Their own includes are
+    # relative, their public headers come through HEADER_SEARCH_PATHS, so
+    # their generic names (version.h, platform.h, ...) stay out of the pod's
+    # header map.
+    "deps/brotli/c/common/*.c",
+    "deps/brotli/c/dec/*.c",
+    "deps/brotli/c/enc/*.c",
+    "deps/zstd/lib/common/*.c",
+    "deps/zstd/lib/compress/*.c",
+    "deps/zstd/lib/decompress/*.c",
   ]
   if sodium_enabled
     s.source_files += ["ios/libsodium-stable/src/libsodium/**/*.{h,c}"]
@@ -190,6 +201,8 @@ Pod::Spec.new do |s|
   s.preserve_paths = [
     "deps/tlsuv/include/**/*.h",
     "deps/tlsuv/src/**/*.h",
+    "deps/brotli/c/**/*.h",
+    "deps/zstd/lib/**/*.h",
   ]
 
   # Add vendored xcframeworks
@@ -199,6 +212,8 @@ Pod::Spec.new do |s|
   ]
   # tlsuv verifies certificates with Apple's trust store
   s.frameworks = "Security", "CoreFoundation"
+  # the system zlib, for zlib
+  s.libraries = "z"
 
   header_search_paths = [
     # libuv
@@ -209,6 +224,9 @@ Pod::Spec.new do |s|
     "\"#{File.join(openssl_dir, "include")}\"",
     # tlsuv
     '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/include"',
+    # Brotli and zstd's public headers
+    '"$(PODS_TARGET_SRCROOT)/deps/brotli/c/include"',
+    '"$(PODS_TARGET_SRCROOT)/deps/zstd/lib"',
     '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src"',
     '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src/pkcs11"',
     # C++ implementation
@@ -220,6 +238,7 @@ Pod::Spec.new do |s|
     '"$(PODS_TARGET_SRCROOT)/cpp/os"',
     '"$(PODS_TARGET_SRCROOT)/cpp/tls"',
     '"$(PODS_TARGET_SRCROOT)/cpp/timers"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/zlib"',
     # crypto
     '"$(PODS_TARGET_SRCROOT)/cpp/crypto/utils"',
     '"$(PODS_TARGET_SRCROOT)/cpp/crypto/hkdf"',
@@ -245,7 +264,11 @@ Pod::Spec.new do |s|
   end
 
   # tlsuv's TLS engine
-  definitions = '$(inherited) TLS_IMPL=openssl USE_OPENSSL'
+  # zstd: no x86 assembly, no legacy formats; multithreading (ZSTD_c_nbWorkers),
+  # as Node. ZSTD_STATIC_LINKING_ONLY on the command line: with Clang modules,
+  # zstd.h is imported as zstd's module (lib/module.modulemap), which ignores
+  # the #define its sources put before including it.
+  definitions = '$(inherited) TLS_IMPL=openssl USE_OPENSSL ZSTD_DISABLE_ASM=1 ZSTD_LEGACY_SUPPORT=0 ZSTD_MULTITHREAD=1 ZSTD_STATIC_LINKING_ONLY=1'
   definitions += ' BLSALLOC_SODIUM=1' if sodium_enabled
 
   # Every file calls OpenSSL by its renamed symbols: a missed rename is a link

@@ -258,6 +258,18 @@
         "default": "./lib/commonjs/tls/index.js"
       }
     },
+    "./zlib": {
+      "source": "./src/zlib/index.ts",
+      "react-native": "./src/zlib/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/zlib/index.d.ts",
+        "default": "./lib/module/zlib/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/zlib/index.d.ts",
+        "default": "./lib/commonjs/zlib/index.js"
+      }
+    },
     "./uv": {
       "source": "./src/uv/index.ts",
       "react-native": "./src/uv/index.ts",
@@ -287,6 +299,11 @@
     "metro.js",
     "lib",
     "deps",
+    "!deps/{brotli,zstd}/.github/**",
+    "!deps/brotli/{csharp,docs,fetch-spec,go,java,js,python,research,scripts,tests}/**",
+    "!deps/brotli/c/{fuzz,tools}/**",
+    "!deps/zstd/{build,contrib,doc,examples,programs,tests,zlibWrapper}/**",
+    "!deps/zstd/lib/{deprecated,dictBuilder,dll,legacy}/**",
     "nitrogen",
     "cpp",
     "nitro.json",
