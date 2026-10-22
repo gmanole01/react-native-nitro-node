@@ -1,7 +1,7 @@
 # react-native-nitro-node
 
 Node.js core modules (`fs`, `net`, `tls`, `dns`, `http`, `https`, `crypto`,
-`timers` (and `timers/promises`), `zlib`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
+`timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.

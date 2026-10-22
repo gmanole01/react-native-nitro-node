@@ -4,11 +4,7 @@
 
 **Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-**Network** `net` · `tls` · `dns` · `http` · `https`<br>
-**Files and system** `fs` · `os` · `path` · `process`<br>
-**Data** `crypto` · `zlib` · `buffer` · `stream` · `events` · `util` · `querystring` · `punycode`<br>
-**Scheduling** `timers` · `timers/promises`<br>
-**Stubs, so packages that import them load** `http2` · `diagnostics_channel`
+`fs` · `net` · `tls` · `dns` · `http` · `https` · `http2` · `crypto` · `zlib` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -107,7 +103,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `timers`, `timers/promises`, `tls`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -594,6 +590,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | `querystring.parse()` / `decode()` / `unescape()` | ❌ | Planned |
 | `punycode` | ✅ | `encode`, `decode`, `toASCII`, `toUnicode`, `ucs2` and `version`, from the [`punycode`](https://www.npmjs.com/package/punycode) package, the code Node's own (deprecated) `punycode` is |
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
+| `stream/promises` | ✅ | `pipeline()` and `finished()` returning promises, with `signal`: the same object as `stream.promises`, as in Node |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
 | `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
 | `os.EOL` | ✅ | |

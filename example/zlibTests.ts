@@ -14,6 +14,8 @@ import zlib, {
   unzipSync,
 } from 'react-native-nitro-node/zlib';
 import { setImmediate } from 'react-native-nitro-node/timers';
+import { Readable, Writable } from 'react-native-nitro-node/stream';
+import streamPromises, { finished, pipeline } from 'react-native-nitro-node/stream/promises';
 import { Buffer } from 'buffer';
 import { type Step, expectThrow } from './testUtils';
 
@@ -227,6 +229,35 @@ export async function runZlibTests(step: Step) {
     err = expectThrowAny(() => zlib.createZstdCompress({ pledgedSrcSize: -1 }));
     expectEqual('negative pledgedSrcSize', [err.code, err.message], ['ERR_INVALID_ARG_VALUE', 'pledgedSrcSize may not be negative']);
     return `${fromNode('zstd').length} bytes for ${TEXT.length}`;
+  });
+
+  await step('stream/promises: pipeline() through gzip and gunzip', async () => {
+    const parts: Buffer[] = [];
+    const sink = new Writable({
+      write(chunk: Buffer, _encoding: string, callback: () => void) {
+        parts.push(chunk);
+        callback();
+      },
+    });
+    await pipeline(Readable.from(pieces(Buffer.from(TEXT), 50)), createGzip(), createGunzip(), sink);
+    expectEqual('round trip', Buffer.concat(parts).toString(), TEXT);
+
+    const readable = Readable.from(['x']);
+    readable.resume();
+    await finished(readable);
+    expectEqual('finished', readable.readableEnded, true);
+
+    // a broken stream rejects the pipeline
+    const err: any = await pipeline(Readable.from([Buffer.from('not gzip at all')]), createGunzip(), new Writable({
+      write(_chunk: Buffer, _encoding: string, callback: () => void) {
+        callback();
+      },
+    })).catch(e => e);
+    expectEqual('error', err?.code, 'Z_DATA_ERROR');
+    if (streamPromises.pipeline !== pipeline || streamPromises.finished !== finished) {
+      throw new Error('the default export is not stream/promises');
+    }
+    return 'pipeline, finished, errors';
   });
 
   await step('zlib: crc32 and constants', async () => {

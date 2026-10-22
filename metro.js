@@ -47,6 +47,7 @@ const MODULES = [
   'punycode',
   'querystring',
   'stream',
+  'stream/promises',
   'timers',
   'timers/promises',
   'tls',
@@ -64,6 +65,7 @@ const WRAPPED_PACKAGES = {
   events: 'events',
   punycode: 'punycode',
   stream: 'readable-stream',
+  'stream/promises': 'readable-stream',
   util: 'util',
 };
 
