@@ -2,7 +2,7 @@
 
 Node.js core modules (`fs`, `net`, `tls`, `dns` (and `dns/promises`), `http`, `https`, `crypto`,
 `timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `url`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
-`punycode`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
+`punycode`, `assert`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Author: George Manole.
 
@@ -52,7 +52,7 @@ when adding or changing an API.
   out their tests, tools and other languages.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
-  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `urlTests`, `gcTests`,
+  `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `urlTests`, `assertTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
@@ -126,12 +126,12 @@ when adding or changing an API.
 - **Metro plugin** `withNitroNode(config, { modules?, includeAppCode? })`
   redirects Node module names (`fs`, `fs/`, `node:fs`) to `src/<name>` **only
   for files inside `node_modules`** by default; `includeAppCode: true` does the
-  app too. Never redirects our own `src/`/`lib/`, nor `buffer`/`events`/`punycode`/
-  `readable-stream` asking for their own name (`WRAPPED_PACKAGES`). `events`
-  and `stream` (`CALLABLE_MODULES`) go straight to the package they wrap
-  (`events`, `readable-stream/lib/stream.js`), resolved from our `src/`,
+  app too. Never redirects our own `src/`/`lib/`, nor `assert`/`buffer`/`events`/`punycode`/
+  `readable-stream` asking for their own name (`WRAPPED_PACKAGES`). `assert`,
+  `events` and `stream` (`CALLABLE_MODULES`) go straight to the package they
+  wrap (`assert`, `events`, `readable-stream/lib/stream.js`), resolved from our `src/`,
   instead of `index.ts`: Node's `require()` of them is a function
-  (EventEmitter, Stream), and `require()` of an ES module gives its
+  (assert, EventEmitter, Stream), and `require()` of an ES module gives its
   namespace, which `new` fails on ("Object is not a constructor"). Their
   `index.ts` default export is that same function, and they must stay pure
   re-exports (the user dropped `cjs.js` shims for this). The config may be an object, a promise or a function

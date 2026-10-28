@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-`fs` · `net` · `tls` · `dns` · `dns/promises` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
+`fs` · `net` · `tls` · `dns` · `dns/promises` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `assert` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -103,7 +103,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `buffer`, `crypto`, `diagnostics_channel`, `dns`, `dns/promises`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `assert`, `buffer`, `crypto`, `diagnostics_channel`, `dns`, `dns/promises`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -614,7 +614,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | Other `util.types.*`, `inherits`, `deprecate`, `debuglog`, `callbackify`, `is*()` | ✅ | The npm `util` package's |
 | `TextEncoder` / `TextDecoder`, `parseArgs`, `styleText`, `MIMEType`, … | ❌ | |
 
-### `events`, `stream`, `querystring`, `punycode`, `buffer`, `os`, `path`
+### `events`, `stream`, `querystring`, `punycode`, `assert`, `buffer`, `os`, `path`
 
 | API | Status | Notes |
 |---|:---:|---|
@@ -622,6 +622,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | `querystring.stringify()` / `encode()` / `escape()` | ✅ | Ported from Node: the same output, the same `ParsedUrlQueryInput` and `StringifyOptions` types |
 | `querystring.parse()` / `decode()` / `unescape()` / `unescapeBuffer()` | ✅ | Ported from Node, with `maxKeys` and `decodeURIComponent` |
 | `punycode` | ✅ | `encode`, `decode`, `toASCII`, `toUnicode`, `ucs2` and `version`, from the [`punycode`](https://www.npmjs.com/package/punycode) package, the code Node's own (deprecated) `punycode` is |
+| `assert` | ✅ | `ok`, `equal`, `strictEqual`, `deepStrictEqual`, `throws`, `rejects`, `match`, `strict`, `AssertionError`, … from the [`assert`](https://www.npmjs.com/package/assert) package, Node's own `assert` ported. As in Node, the default export, and what packages get from `require('assert')`, is `assert` itself. No `CallTracker` and no `assert/strict` (use `assert.strict`) |
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `stream/promises` | ✅ | `pipeline()` and `finished()` returning promises, with `signal`: the same object as `stream.promises`, as in Node |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
@@ -738,6 +739,7 @@ Know the limits:
 - [x] `tls` / `https`: native TLS 1.2 and 1.3 client on OpenSSL
 - [x] Certificate verification against the system trust store, with `servername` (SNI), `rejectUnauthorized` and ALPN
 - [x] `events`, `stream`, `querystring` (now with `parse()`) and `punycode` entry points
+- [x] `assert`, from the `assert` package
 - [x] `timers`: `setTimeout`, `setInterval` and `setImmediate` on libuv, running in the background, and `timers/promises`
 - [x] A Metro resolver (`withNitroNode`) that maps `fs`, `net`, `node:net`, … to this library, with a `debug` log of what it redirects
 - [x] Node-compatible error objects (`code`, `errno`, `syscall`)
@@ -753,7 +755,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, `assert`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init

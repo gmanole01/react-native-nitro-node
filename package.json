@@ -18,6 +18,18 @@
         "default": "./lib/commonjs/index.js"
       }
     },
+    "./assert": {
+      "source": "./src/assert/index.ts",
+      "react-native": "./src/assert/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/assert/index.d.ts",
+        "default": "./lib/module/assert/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/assert/index.d.ts",
+        "default": "./lib/commonjs/assert/index.js"
+      }
+    },
     "./buffer": {
       "source": "./src/buffer/index.ts",
       "react-native": "./src/buffer/index.ts",
@@ -387,6 +399,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "dependencies": {
+    "assert": "^2.1.0",
     "buffer": "^6.0.3",
     "events": "^3.3.0",
     "http-parser-js": "^0.5.10",
@@ -402,6 +415,7 @@
     "@jamesacarr/eslint-formatter-github-actions": "^0.2.0",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
+    "@types/assert": "^1.5.11",
     "@types/events": "^3",
     "@types/jest": "^29.5.12",
     "@types/punycode": "^2.1.4",

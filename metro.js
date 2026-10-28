@@ -31,6 +31,7 @@ const path = require('path');
 
 /** The Node modules this library implements, each in src/<name>/index.ts. */
 const MODULES = [
+  'assert',
   'buffer',
   'crypto',
   'diagnostics_channel',
@@ -63,6 +64,7 @@ const MODULES = [
  * not get our stream, which is readable-stream itself.
  */
 const WRAPPED_PACKAGES = {
+  assert: 'assert',
   buffer: 'buffer',
   events: 'events',
   punycode: 'punycode',
@@ -73,13 +75,15 @@ const WRAPPED_PACKAGES = {
 
 /**
  * Our modules whose Node module.exports is a function, not an object, and the
- * file of the package they wrap that exports it: require('events') is
- * EventEmitter, require('stream') is Stream. Requests for these go to that
- * file rather than to src/<name>/index.ts: require() of an ES module returns
- * its namespace, which `new` can't be used on. (readable-stream's main file
- * exports Readable, so stream takes lib/stream.js, which exports Stream.)
+ * file of the package they wrap that exports it: require('assert') is
+ * assert, require('events') is EventEmitter, require('stream') is Stream.
+ * Requests for these go to that file rather than to src/<name>/index.ts:
+ * require() of an ES module returns its namespace, which can't be called nor
+ * used with `new`. (readable-stream's main file exports Readable, so stream
+ * takes lib/stream.js, which exports Stream.)
  */
 const CALLABLE_MODULES = {
+  assert: 'assert',
   events: 'events',
   stream: 'readable-stream/lib/stream.js',
 };
