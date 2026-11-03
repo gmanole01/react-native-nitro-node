@@ -19,7 +19,7 @@ licenses.
 | [Brotli](https://github.com/google/brotli) | `deps/brotli` | MIT |
 | [ada](https://github.com/ada-url/ada) | `deps/ada` | MIT (or Apache 2.0, at your option) |
 | [Zstandard](https://github.com/facebook/zstd) | `deps/zstd` | BSD 3-clause (zstd is dual-licensed BSD or GPLv2; this library uses it under the BSD license) |
-| [OpenSSL](https://www.openssl.org) | iOS: downloaded by `NitroNode.podspec` (react-native-quick-crypto's build); Android: the `io.github.ronickg:openssl-static` package | Apache 2.0 |
+| [OpenSSL](https://www.openssl.org) | iOS: downloaded by `NitroNode.podspec` (our build, `scripts/build-openssl-apple.sh`, adapted from react-native-quick-crypto's); Android: the `io.github.ronickg:openssl-static` package | Apache 2.0 |
 | [libsodium](https://libsodium.org) | Only with `SODIUM_ENABLED` / `sodiumEnabled`: downloaded by `NitroNode.podspec`, or the `io.github.ronickg:sodium` package | ISC |
 
 Each library in `deps/` also keeps its own license files there. libuv's

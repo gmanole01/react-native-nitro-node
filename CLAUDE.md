@@ -40,9 +40,13 @@ when adding or changing an API.
 - `src/crypto/` (with its own specs in `src/crypto/specs/`) and `cpp/crypto/`:
   `crypto`, ported from react-native-quick-crypto
   (`~/Desktop/react-native-quick-crypto/packages/react-native-quick-crypto`).
-- OpenSSL 3.6.2 is react-native-quick-crypto's: on iOS the podspec downloads
-  its `QuickCryptoOpenSSL.xcframework` (symbols renamed `rnqc_*`, prefix header
-  force-included) into `ios/openssl/`; on Android the `openssl-static` prefab
+- OpenSSL 3.6.2: on iOS our own build, `scripts/build-openssl-apple.sh`
+  (adapted from react-native-quick-crypto's), `NitroNodeOpenSSL.xcframework`
+  with symbols renamed `rnnn_*` and `nitronode_openssl_prefix.h`
+  force-included. The podspec downloads it into `ios/openssl/` from this repo's
+  `openssl-apple-<version>` GitHub release. Not quick-crypto's build: CocoaPods
+  refuses two pods vendoring a framework with the same name. On Android the
+  `openssl-static` prefab
   (`opensslstatic::ssl/crypto`), which tlsuv also links
   (`deps/tlsuv/src/openssl/CMakeLists.txt` is patched for it).
 - `deps/`: libuv, c-ares, tlsuv (vendored); blake3, ncrypto, simdutf
