@@ -19,6 +19,7 @@ import { runZlibTests } from './zlibTests';
 import { runUtilTests } from './utilTests';
 import { runUrlTests } from './urlTests';
 import { runAssertTests } from './assertTests';
+import { runDgramTests } from './dgramTests';
 import {
   type MemoryReport,
   type MemorySample,
@@ -34,6 +35,7 @@ async function runTests(report: (result: StepResult) => void) {
 
   await runNetTests(step);
   await runNetBehaviourTests(step);
+  await runDgramTests(step);
   await runHttpTests(step);
   await runAgentTests(step);
   await runTlsTests(step);

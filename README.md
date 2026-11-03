@@ -4,7 +4,7 @@
 
 **Node.js core modules for React Native, on a real libuv event loop: packages written for Node run unchanged, and keep running in the background.**
 
-`fs` · `net` · `tls` · `dns` · `dns/promises` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `assert` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
+`fs` · `net` · `dgram` · `tls` · `dns` · `dns/promises` · `http` · `https` · `http2` · `crypto` · `zlib` · `url` · `util` · `events` · `stream` · `stream/promises` · `timers` · `timers/promises` · `querystring` · `punycode` · `assert` · `buffer` · `os` · `path` · `process` · `diagnostics_channel`
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
@@ -15,7 +15,7 @@
 
 ---
 
-Use Node.js APIs in React Native: open raw TCP and TLS sockets, run an HTTP server on the device, make HTTP requests with connection pooling, resolve DNS names, read and write files, hash, encrypt and sign, and compress with gzip, Brotli or zstd. They are Node's APIs, with Node's options, events and error codes, so npm packages written for Node work as they are: the [Metro plugin](#metro) points their `require('net')`, `require('node:zlib')`, … at this library.
+Use Node.js APIs in React Native: open raw TCP, UDP and TLS sockets, run an HTTP server on the device, make HTTP requests with connection pooling, resolve DNS names, read and write files, hash, encrypt and sign, and compress with gzip, Brotli or zstd. They are Node's APIs, with Node's options, events and error codes, so npm packages written for Node work as they are: the [Metro plugin](#metro) points their `require('net')`, `require('node:zlib')`, … at this library.
 
 ```ts
 import net from 'react-native-nitro-node/net';
@@ -37,6 +37,7 @@ Underneath is **[libuv](https://libuv.org)**, the C library behind Node.js's own
 - 🧩 **Drop-in for Node packages:** a [Metro plugin](#metro) (`withNitroNode`) redirects `fs`, `node:net`, `zlib`, … in your dependencies to this library, and a [polyfill](#globals) sets `global.Buffer` and `global.crypto` for packages that use them without importing.
 - 🌙 **Keeps running in the background:** everything runs on a libuv loop on its own thread, including the timers. React Native pauses its own timers in the background; these, `process.nextTick`, and the sockets, requests and callbacks built on them go on for as long as the system lets the app run.
 - 🔌 **Real TCP sockets and servers:** `net.Socket` and `net.Server` are libuv `uv_tcp_t` handles, not a WebSocket or a platform HTTP stack. A server on the device accepts connections from the network.
+- 📡 **UDP sockets:** `dgram`, ported from Node 22, on libuv `uv_udp_t` handles: send and receive datagrams, connected sockets, broadcast and multicast.
 - 🌐 **HTTP client and server:** `http` with streaming bodies, chunked encoding, keep-alive, upgrade/CONNECT and Node's server timeouts. `http.Agent` / `https.Agent` pool and reuse connections, with Node 19+'s keep-alive `globalAgent`.
 - 🔒 **Native TLS client:** TLS 1.2 and 1.3 sockets and `https` requests on **OpenSSL 3**, verified against the system's trust store, with SNI and ALPN. Encryption runs on the native side; JavaScript only sees plaintext. *(See the [security notes](#-security-notes).)*
 - 🧭 **Native DNS:** `dns.lookup` and `dns.resolve*` on **[c-ares](https://c-ares.org)**, which Node also uses.
@@ -103,7 +104,7 @@ module.exports = withNitroNode(mergeConfig(getDefaultConfig(__dirname), config),
 });
 ```
 
-The names are `assert`, `buffer`, `crypto`, `diagnostics_channel`, `dns`, `dns/promises`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
+The names are `assert`, `buffer`, `crypto`, `dgram`, `diagnostics_channel`, `dns`, `dns/promises`, `events`, `fs`, `http`, `http2`, `https`, `net`, `os`, `path`, `process`, `punycode`, `querystring`, `stream`, `stream/promises`, `timers`, `timers/promises`, `tls`, `url`, `util` and `zlib`, also exported as `MODULES`. To redirect all but some, filter it: `MODULES.filter(name => name !== 'fs')`. Any `resolveRequest` you already have still handles everything else.
 
 To see what gets redirected, set `debug`. Metro then logs every request for one of these names, with the file that makes it and where it goes, or why it is left alone:
 
@@ -237,6 +238,21 @@ socket.on('error', (err) => console.error(err.code, err.message)); // e.g. ECONN
 ```
 
 When a host has both IPv4 and IPv6 addresses, `connect` tries each address in turn, like Node's `autoSelectFamily`.
+
+### UDP sockets
+
+```ts
+import dgram from 'react-native-nitro-node/dgram';
+
+const socket = dgram.createSocket('udp4');
+socket.on('message', (msg, rinfo) => {
+  console.log(`${msg} from ${rinfo.address}:${rinfo.port}`);
+  socket.send('pong', rinfo.port, rinfo.address); // answer the sender
+});
+socket.bind(41234, () => console.log('listening on', socket.address()));
+```
+
+It is Node's own `dgram` code, so the sockets behave as Node's: an unbound socket binds itself on its first `send()`, host names go through `dns.lookup()`, and errors have Node's codes and messages (`bind EADDRINUSE 0.0.0.0:41234`). Packages that speak UDP through `dgram` work with the [Metro plugin](#metro). Multicast and broadcast need permissions from the system, see [the table](#dgram).
 
 ### HTTP server on the device
 
@@ -492,6 +508,24 @@ dns.lookup('nope.invalid', (err) => {
 | IPC / Unix domain sockets | ❌ | |
 | `net.BlockList`, `net.SocketAddress` | ❌ | |
 
+### `dgram`
+
+| API | Status | Notes |
+|---|:---:|---|
+| `dgram.createSocket()` | ✅ | `udp4` / `udp6`, `reuseAddr`, `reusePort`, `ipv6Only`, `recvBufferSize`, `sendBufferSize`, `lookup`, `signal`, `receiveBlockList` / `sendBlockList` |
+| `socket.bind()` | ✅ | `port`, `address`, `exclusive`. Host names are resolved with `dns.lookup()`, or `lookup` |
+| `socket.send()` | ✅ | Strings, `Buffer`s, typed arrays, `DataView`s and lists of them (sent as one datagram), with `offset` / `length`. An unbound socket binds first and queues, as Node |
+| `connect()`, `disconnect()`, `remoteAddress()` | ✅ | |
+| `address()`, `close()`, `ref()` / `unref()` | ✅ | `ref()` / `unref()` do nothing: an app's loop never exits |
+| `setBroadcast()`, `setTTL()`, `setMulticastTTL()`, `setMulticastLoopback()`, `setMulticastInterface()` | ✅ | |
+| `addMembership()` / `dropMembership()`, `addSourceSpecificMembership()` / `dropSourceSpecificMembership()` | ✅ | iOS needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`) to send or receive multicast and broadcast; Android, a `WifiManager.MulticastLock` to receive multicast |
+| `get/setRecvBufferSize()`, `get/setSendBufferSize()`, `getSendQueueSize()`, `getSendQueueCount()` | ✅ | Android (Linux) reports double the size set, as Node there |
+| Events | ✅ | `listening`, `message`, `connect`, `error`, `close` |
+| `reusePort` | ⚠️ | On Android, as Node on Linux: sockets share the port and its datagrams. On iOS `bind` fails with `ENOTSUP`, as Node on macOS: libuv has no `SO_REUSEPORT` for Apple systems |
+| `bind({ fd })`, cluster workers | ❌ | No file descriptors to open: `ERR_INVALID_FD_TYPE` |
+| `receiveBlockList` / `sendBlockList` | ⚠️ | There is no `net.BlockList` yet: any object with Node's `check(address, family)` works |
+| `Symbol.asyncDispose` | ⚠️ | Only where the engine has `Symbol.asyncDispose` |
+
 ### `tls`
 
 | API | Status | Notes |
@@ -664,7 +698,7 @@ Node 22's `lib/zlib.js`, ported: the same streams, options, flush handling, erro
 ```mermaid
 flowchart TB
     subgraph JS["JavaScript (Hermes)"]
-        API["net · tls · http · https · dns · fs · timers · zlib<br/><sub>Node-compatible TypeScript API</sub>"]
+        API["net · dgram · tls · http · https · dns · fs · timers · zlib<br/><sub>Node-compatible TypeScript API</sub>"]
     end
 
     subgraph Native["Native (C++)"]
@@ -692,6 +726,7 @@ flowchart TB
 - **c-ares** performs DNS resolution asynchronously. On Android it's initialized with the system's DNS servers from `ConnectivityManager`.
 - **Timers** are `uv_timer_t` handles on the loop thread, and immediates a `uv_check_t` that runs after each I/O phase, as in Node. JavaScript keeps the timers' callbacks and asks the loop to wake it.
 - **fs** calls go straight to POSIX. Every call has two native versions: the `*Sync` forms run on the JS thread, and the callback forms run on Nitro's thread pool, so they never block JavaScript.
+- **UDP** sockets are `uv_udp_t` handles on the loop thread, under Node's own `lib/dgram.js`, which drives them through the same API as Node's `UDPWrap`. A received datagram goes to JavaScript as the buffer libuv read it into, without a copy; a send copies its buffers into one datagram, since the JavaScript ones can't be read off the JS thread.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **crypto** is [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto)'s implementation: C++ HybridObjects over OpenSSL (the same OpenSSL 3.6 as TLS) and Node's [ncrypto](https://github.com/nodejs/ncrypto), with [simdutf](https://github.com/simdutf/simdutf) for base64 and hex. Most calls run on the JS thread; the slow ones, such as key generation and key derivation, also have asynchronous forms that run on Nitro's thread pool.
 - **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
@@ -727,12 +762,12 @@ Know the limits:
 ### Later
 - [ ] More DNS record types: `resolveMx`, `resolveTxt`, `resolveSrv`, `resolveCname`, `resolveNs`, `reverse`
 - [ ] `http2`: client and server (only stubs for now)
-- [ ] `dgram`: UDP sockets on libuv
 - [ ] Unix domain sockets for `net`
 - [ ] The rest of `util` in Node's own code (`TextEncoder`/`TextDecoder`, `parseArgs`, `styleText`, …)
 
 ### Done
 - [x] `net`: TCP client and server on libuv
+- [x] `dgram`: UDP sockets on libuv, Node's own code
 - [x] `dns`: `lookup` (with Node's options) and `resolve4`/`resolve6` on c-ares, and `dns.promises`
 - [x] `http`: client and server
 - [x] `http.Agent` / `https.Agent`: connection pooling and keep-alive reuse
@@ -755,7 +790,7 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, `assert`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`example/`](./example) app runs the library's test suites (`net`, `dgram`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, `assert`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init

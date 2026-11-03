@@ -236,6 +236,7 @@ Pod::Spec.new do |s|
     '"$(PODS_TARGET_SRCROOT)/cpp"',
     '"$(PODS_TARGET_SRCROOT)/cpp/core"',
     '"$(PODS_TARGET_SRCROOT)/cpp/net"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/dgram"',
     '"$(PODS_TARGET_SRCROOT)/cpp/dns"',
     '"$(PODS_TARGET_SRCROOT)/cpp/fs"',
     '"$(PODS_TARGET_SRCROOT)/cpp/os"',

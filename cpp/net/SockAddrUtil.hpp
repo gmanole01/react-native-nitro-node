@@ -20,8 +20,12 @@ enum class SockAddrEnd {
 // code. Host names are not resolved here, that is done on the JS side.
 int parseSockAddr(const std::string& host, int port, struct sockaddr_storage* out);
 
+// Converts an IPv4 or IPv6 address. Returns NullType for any other family.
+std::variant<nitro::NullType, SockAddr> toSockAddr(const struct sockaddr* addr);
+
 // Reads the address of the given end of `handle`. Must be called on the UV loop
 // thread. Returns NullType on any failure.
 std::variant<nitro::NullType, SockAddr> sockAddrOf(uv_tcp_t* handle, SockAddrEnd end);
+std::variant<nitro::NullType, SockAddr> sockAddrOf(uv_udp_t* handle, SockAddrEnd end);
 
 } // namespace margelo::nitro::node

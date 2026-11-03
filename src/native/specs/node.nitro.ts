@@ -95,6 +95,55 @@ export interface NitroNodeNetServer
   getSockName(): SockAddr | null;
 }
 
+/**
+ * A UDP socket (uv_udp_t), the native half of dgram.Socket, as Node's
+ * UDPWrap. Addresses are IPs: JS resolves host names first. Calls that can
+ * fail return 0 or -errno.
+ */
+// prettier-ignore
+export interface NitroNodeDgramSocket extends HybridObject<{ android: 'c++', ios: 'c++' }> {
+  // Properties
+  /** A datagram, or a receive error (status < 0, no data and no sender). */
+  onMessage: (data: ArrayBuffer, from: SockAddr | null, status: number) => void;
+  onSend: (id: number, status: number) => void;
+  onClose: () => void;
+
+  // Methods
+  /** `flags`: libuv's uv_udp_flags (UV_UDP_IPV6ONLY, UV_UDP_REUSEADDR, UV_UDP_REUSEPORT), as Node passes them. */
+  bind(host: string, port: number, flags: number): number;
+  connect(host: string, port: number): number;
+  disconnect(): number;
+  /**
+   * Sends the buffers as one datagram, to `to` or, without it, to the
+   * connected peer. onSend reports the result, unless this returns an error.
+   */
+  send(id: number, buffers: ArrayBuffer[], to?: SockAddr): number;
+  recvStart(): number;
+  recvStop(): number;
+  close(): void;
+
+  getSockName(): SockAddr | null;
+  getPeerName(): SockAddr | null;
+
+  setBroadcast(enable: boolean): number;
+  setTTL(ttl: number): number;
+  setMulticastTTL(ttl: number): number;
+  setMulticastLoopback(enable: boolean): number;
+  setMulticastInterface(interfaceAddress: string): number;
+  addMembership(multicastAddress: string, interfaceAddress?: string): number;
+  dropMembership(multicastAddress: string, interfaceAddress?: string): number;
+  addSourceSpecificMembership(sourceAddress: string, groupAddress: string, interfaceAddress?: string): number;
+  dropSourceSpecificMembership(sourceAddress: string, groupAddress: string, interfaceAddress?: string): number;
+
+  /**
+   * The receive or send buffer size (SO_RCVBUF / SO_SNDBUF), or -errno. A
+   * size of 0 only reads it; otherwise it is set first.
+   */
+  bufferSize(size: number, recv: boolean): number;
+  getSendQueueSize(): number;
+  getSendQueueCount(): number;
+}
+
 /** How a TLS client connection is set up, see NitroNodeTlsSocket.startTls(). */
 export interface TlsClientOptions {
   /** Sent as SNI, and the name the server's certificate has to match. */
@@ -316,6 +365,11 @@ export interface NitroNodeDns extends HybridObject<{ android: 'c++'; ios: 'c++' 
 export interface NitroNodeNet extends HybridObject<{ android: 'c++', ios: 'c++' }> {
   createSocket(): NitroNodeNetSocket;
   createServer(): NitroNodeNetServer;
+}
+
+// prettier-ignore
+export interface NitroNodeDgram extends HybridObject<{ android: 'c++', ios: 'c++' }> {
+  createSocket(): NitroNodeDgramSocket;
 }
 
 // prettier-ignore

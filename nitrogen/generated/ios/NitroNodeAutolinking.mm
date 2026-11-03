@@ -12,6 +12,7 @@
 
 #include "HybridUv.hpp"
 #include "HybridNet.hpp"
+#include "HybridDgram.hpp"
 #include "HybridDns.hpp"
 #include "HybridFs.hpp"
 #include "HybridFsConstants.hpp"
@@ -76,6 +77,15 @@
                     "The HybridObject \"HybridNet\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridNet>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "NitroNodeDgram",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridDgram>,
+                    "The HybridObject \"HybridDgram\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridDgram>();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(

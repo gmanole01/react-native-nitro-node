@@ -34,6 +34,7 @@ const MODULES = [
   'assert',
   'buffer',
   'crypto',
+  'dgram',
   'diagnostics_channel',
   'dns',
   'dns/promises',

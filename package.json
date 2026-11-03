@@ -54,6 +54,18 @@
         "default": "./lib/commonjs/crypto/index.js"
       }
     },
+    "./dgram": {
+      "source": "./src/dgram/index.ts",
+      "react-native": "./src/dgram/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/dgram/index.d.ts",
+        "default": "./lib/module/dgram/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/dgram/index.d.ts",
+        "default": "./lib/commonjs/dgram/index.js"
+      }
+    },
     "./diagnostics_channel": {
       "source": "./src/diagnostics_channel/index.ts",
       "react-native": "./src/diagnostics_channel/index.ts",

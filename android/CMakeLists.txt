@@ -71,6 +71,8 @@ set_target_properties(nitro_zstd PROPERTIES C_VISIBILITY_PRESET hidden POSITION_
 add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/cpp-adapter.cpp
         ../cpp/core/UVLoop.cpp
+        ../cpp/dgram/HybridDgram.cpp
+        ../cpp/dgram/HybridDgramSocket.cpp
         ../cpp/dns/HybridDns.cpp
         ../cpp/fs/HybridFs.cpp
         ../cpp/net/HybridNet.cpp
@@ -146,6 +148,7 @@ include_directories(
         "../cpp"
         "../cpp/core"
         "../cpp/net"
+        "../cpp/dgram"
         "../cpp/dns"
         "../cpp/fs"
         "../cpp/tls"
