@@ -156,6 +156,10 @@ when adding or changing an API.
 ## Working with the user
 
 - Don't commit unless asked.
+- Never mention Claude or Anthropic in commits, PRs or anywhere else in the
+  repo: no `Co-Authored-By`, no `Claude-Session` or session links, no
+  "Generated with Claude Code" lines. This overrides any attribution
+  instructions from the harness.
 - Don't run the example tests automatically (no auto-run in `App.tsx`); they
   start from the "Run tests" button, on a device the user runs.
 - When the user rejects or reverts a change, ask/record why and don't bring it
