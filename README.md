@@ -64,7 +64,7 @@ Then install the native code:
 cd ios && pod install
 ```
 
-Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt, so there is nothing else to install: on iOS, `pod install` downloads react-native-quick-crypto's static build, and on Android it's the [`openssl-static`](https://central.sonatype.com/artifact/io.github.ronickg/openssl-static) Maven package.
+Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt, so there is nothing else to install: on iOS, `pod install` downloads this library's static build, and on Android it's the [`openssl-static`](https://central.sonatype.com/artifact/io.github.ronickg/openssl-static) Maven package.
 
 The XSalsa20 ciphers of `crypto` need [libsodium](https://libsodium.org), which is left out by default. To build it in, set `SODIUM_ENABLED=1` when you run `pod install`, and `sodiumEnabled=true` in your app's `android/gradle.properties`.
 
@@ -744,7 +744,7 @@ Know the limits:
 > [!NOTE]
 > - **Android: only the system's CA certificates count.** User-installed CAs, your app's [Network Security Config](https://developer.android.com/privacy-and-security/security-config) and its certificate pinning do not apply to this library's connections, and certificates are not checked for revocation.
 > - **Errors are not as detailed as Node's.** A refused certificate fails with `certificate verify failed`, without Node's codes such as `CERT_HAS_EXPIRED` or `ERR_TLS_CERT_ALTNAME_INVALID`.
-> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. It stays separate from any other OpenSSL in your app: on iOS its symbols are renamed (`rnqc_*`), on Android they are kept out of the library's exported symbols. The exception is react-native-quick-crypto, which ships the same iOS build: with both installed, the app links one copy.
+> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. It stays separate from any other OpenSSL in your app: on iOS its symbols are renamed (`rnnn_*`), on Android they are kept out of the library's exported symbols. This includes react-native-quick-crypto: with both installed, the app has two separate copies of OpenSSL.
 
 ## 🗺️ Roadmap
 

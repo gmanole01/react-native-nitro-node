@@ -15,23 +15,23 @@ Pod::Spec.new do |s|
   s.platforms    = { :ios => min_ios_version_supported, :visionos => 1.0 }
   s.source       = { :git => "https://github.com/gmanole01/react-native-nitro-node.git", :tag => "#{s.version}" }
 
-  # react-native-quick-crypto's prebuilt static OpenSSL, for TLS and crypto.
-  # Every global symbol in it is renamed to rnqc_*, and its prefix header,
+  # Our prebuilt static OpenSSL, for TLS and crypto (scripts/build-openssl-apple.sh).
+  # Every global symbol in it is renamed to rnnn_*, and its prefix header,
   # included in every file of this pod, makes our code call those names: so
   # another library that statically embeds OpenSSL can't take its place when
-  # the app links. See react-native-quick-crypto's
-  # scripts/build-openssl-apple.sh and its issue #1059.
+  # the app links. It's our own build, not react-native-quick-crypto's: CocoaPods
+  # refuses two pods vendoring a framework with the same name.
   #
   # Downloaded while the podspec is evaluated, because prepare_command is
   # skipped for :path pods.
   openssl_version = "3.6.2"
-  openssl_sha256 = "a50e3c8473b0526b159ad8d105e97a90d1153a4a230388cc731ee23a7d0ad3a4"
+  openssl_sha256 = "47e2000d40b1eab9c46d48167f34524a6f65dc3da5904e90c66ad76456c0ee8d"
   openssl_dir = File.join(__dir__, "ios", "openssl")
-  openssl_prefix_header = File.join(openssl_dir, "quickcrypto_openssl_prefix.h")
+  openssl_prefix_header = File.join(openssl_dir, "nitronode_openssl_prefix.h")
 
   unless File.exist?(openssl_prefix_header)
-    archive = File.join(__dir__, "ios", "QuickCryptoOpenSSL.zip")
-    url = "https://github.com/margelo/react-native-quick-crypto/releases/download/openssl-apple-#{openssl_version}/QuickCryptoOpenSSL-#{openssl_version}.zip"
+    archive = File.join(__dir__, "ios", "NitroNodeOpenSSL.zip")
+    url = "https://github.com/gmanole01/react-native-nitro-node/releases/download/openssl-apple-#{openssl_version}/NitroNodeOpenSSL-#{openssl_version}.zip"
 
     Pod::UI.puts "[NitroNode] Downloading static OpenSSL #{openssl_version}..."
     FileUtils.mkdir_p(File.join(__dir__, "ios"))
@@ -99,16 +99,24 @@ Pod::Spec.new do |s|
     CMD
   end
 
+  # Only source files go in the Xcode project, never our headers: they are
+  # found through HEADER_SEARCH_PATHS and kept with preserve_paths. Xcode puts
+  # the headers of every pod in one header map (project-headers.hmap) that
+  # quoted includes search before a pod's own headers, so two pods with a
+  # header of the same name get each other's. Our crypto is
+  # react-native-quick-crypto's, with its file names (QuickCryptoUtils.hpp,
+  # HybridCipher.hpp, CipherArgs.hpp...): with both libraries in an app, its
+  # files would include ours. USE_HEADERMAP = NO below is the other direction.
   s.source_files = [
     # Implementation (Swift)
     "ios/**/*.{swift}",
     # Autolinking/Registration (Objective-C++)
     "ios/**/*.{m,mm}",
     # Implementation (C++ objects)
-    "cpp/**/*.{h,c,hpp,cpp}",
+    "cpp/**/*.{c,cpp}",
     
     # libuv
-    "deps/libuv/src/*.{h,c}",
+    "deps/libuv/src/*.c",
     "deps/libuv/src/unix/async.c",
     "deps/libuv/src/unix/core.c",
     "deps/libuv/src/unix/dl.c",
@@ -148,12 +156,10 @@ Pod::Spec.new do |s|
     "deps/tlsuv/src/openssl/keys.c",
 
     # crypto: ncrypto, simdutf, BLAKE3 (its C implementation) and fastpbkdf2
-    "deps/ncrypto/include/**/*.{h}",
     "deps/ncrypto/src/*.{cpp}",
-    "deps/simdutf/include/**/*.{h}",
     "deps/simdutf/src/simdutf.cpp",
-    "deps/blake3/c/*.{h,c}",
-    "deps/fastpbkdf2/*.{h,c}",
+    "deps/blake3/c/*.c",
+    "deps/fastpbkdf2/*.c",
 
     # zlib: Brotli and zstd, only their .c files. Their own includes are
     # relative, their public headers come through HEADER_SEARCH_PATHS, so
@@ -167,7 +173,7 @@ Pod::Spec.new do |s|
     "deps/zstd/lib/decompress/*.c",
 
     # url: ada, the WHATWG URL parser Node uses
-    "deps/ada/ada.{h,cpp}",
+    "deps/ada/ada.cpp",
   ]
   if sodium_enabled
     s.source_files += ["ios/libsodium-stable/src/libsodium/**/*.{h,c}"]
@@ -197,11 +203,18 @@ Pod::Spec.new do |s|
     "deps/blake3/c/example.c",
     "deps/blake3/c/example_tbb.c",
     "deps/blake3/c/blake3_tbb.cpp",
-    # Collides with libsodium's version.h; ncrypto.h includes it as
-    # "ncrypto/version.h", which still resolves
-    "deps/ncrypto/include/ncrypto/version.h",
   ]
   s.preserve_paths = [
+    "cpp/**/*.{h,hpp}",
+    "nitrogen/generated/shared/**/*.{h,hpp}",
+    "deps/libuv/include/**/*.h",
+    "deps/libuv/src/**/*.h",
+    "deps/ncrypto/include/**/*.h",
+    "deps/simdutf/include/**/*.h",
+    "deps/simdutf/src/**/*.h",
+    "deps/blake3/c/*.h",
+    "deps/fastpbkdf2/*.h",
+    "deps/ada/ada.h",
     "deps/tlsuv/include/**/*.h",
     "deps/tlsuv/src/**/*.h",
     "deps/brotli/c/**/*.h",
@@ -211,7 +224,7 @@ Pod::Spec.new do |s|
   # Add vendored xcframeworks
   s.vendored_frameworks = [
     "ios/Frameworks/c-ares.xcframework",
-    "ios/openssl/QuickCryptoOpenSSL.xcframework",
+    "ios/openssl/NitroNodeOpenSSL.xcframework",
   ]
   # tlsuv verifies certificates with Apple's trust store
   s.frameworks = "Security", "CoreFoundation"
@@ -244,19 +257,29 @@ Pod::Spec.new do |s|
     '"$(PODS_TARGET_SRCROOT)/cpp/timers"',
     '"$(PODS_TARGET_SRCROOT)/cpp/zlib"',
     '"$(PODS_TARGET_SRCROOT)/cpp/url"',
+    # libuv's internal headers (uv-common.h...)
+    '"$(PODS_TARGET_SRCROOT)/deps/libuv/src"',
     '"$(PODS_TARGET_SRCROOT)/deps/ada"',
+    # NitroModules' headers: its module's umbrella includes them as
+    # "AnyMap.hpp", and those include its private ones the same way. Other
+    # pods find them through the header maps we don't use
+    '"${PODS_ROOT}/Headers/Public/NitroModules"',
+    '"${PODS_ROOT}/Headers/Private/NitroModules"',
+    # Nitrogen's generated specs and structs
+    '"$(PODS_TARGET_SRCROOT)/nitrogen/generated/shared/c++"',
+    '"$(PODS_TARGET_SRCROOT)/nitrogen/generated/ios"',
+    '"$(PODS_TARGET_SRCROOT)/ios"',
     # crypto
-    '"$(PODS_TARGET_SRCROOT)/cpp/crypto/utils"',
-    '"$(PODS_TARGET_SRCROOT)/cpp/crypto/hkdf"',
-    '"$(PODS_TARGET_SRCROOT)/cpp/crypto/dh"',
-    '"$(PODS_TARGET_SRCROOT)/cpp/crypto/ecdh"',
-    '"$(PODS_TARGET_SRCROOT)/cpp/crypto/turboshake"',
     '"$(PODS_TARGET_SRCROOT)/deps/ncrypto/include"',
     '"$(PODS_TARGET_SRCROOT)/deps/simdutf/include"',
     '"$(PODS_TARGET_SRCROOT)/deps/simdutf/src"',
     '"$(PODS_TARGET_SRCROOT)/deps/blake3/c"',
     '"$(PODS_TARGET_SRCROOT)/deps/fastpbkdf2"',
   ]
+  # C++ implementation: every folder of cpp/, so a new one needs no change here
+  header_search_paths += Dir.glob("cpp/**/", base: __dir__).map do |dir|
+    "\"$(PODS_TARGET_SRCROOT)/#{dir.chomp("/")}\""
+  end
   if sodium_enabled
     # The absolute path too: in a monorepo the podspec is reached through a
     # symlink, but sources are compiled from their real paths
@@ -287,6 +310,10 @@ Pod::Spec.new do |s|
     'OTHER_CPLUSPLUSFLAGS' => "$(inherited) #{force_include}",
     'GCC_PREPROCESSOR_DEFINITIONS' => definitions,
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
+    # Our includes don't go through Xcode's header maps, which hold every
+    # pod's headers (see source_files): react-native-quick-crypto's would win
+    # over ours of the same name
+    'USE_HEADERMAP' => 'NO',
     # BLAKE3: no NEON on the x86_64 simulator, and no x86 SIMD anywhere (its
     # sources are excluded above, but blake3_dispatch.c still refers to them)
     'EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*][arch=x86_64]' => 'deps/blake3/c/blake3_neon.c',
@@ -295,6 +322,17 @@ Pod::Spec.new do |s|
 
   load 'nitrogen/generated/ios/NitroNode+autolinking.rb'
   add_nitrogen_files(s)
+
+  # Nitrogen adds its generated headers to the project; keep them out like ours
+  # (see source_files). Its struct headers have quick-crypto's names too
+  # (CipherArgs.hpp...). Swift only needs the bridge header, which includes none.
+  s.source_files = s.attributes_hash['source_files'].map do |pattern|
+    pattern
+      .sub("nitrogen/generated/shared/**/*.{h,hpp,c,cpp,swift}", "nitrogen/generated/shared/**/*.{c,cpp,swift}")
+      .sub("nitrogen/generated/ios/**/*.{h,hpp,c,cpp,mm,swift}", "nitrogen/generated/ios/**/*.{hpp,c,cpp,mm,swift}")
+  end
+  s.public_header_files = ["nitrogen/generated/ios/NitroNode-Swift-Cxx-Bridge.hpp"]
+  s.private_header_files = []
 
   s.dependency 'React-jsi'
   s.dependency 'React-callinvoker'
