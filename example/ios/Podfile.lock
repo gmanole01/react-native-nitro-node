@@ -26,7 +26,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - NitroNode (0.4.2):
+  - NitroNode (0.4.3):
     - hermes-engine
     - NitroModules
     - RCTRequired
@@ -2144,9 +2144,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   FBLazyVector: e97c19a5a442429d1988f182a1940fb08df514da
-  hermes-engine: e6f1cf88bd3b602b0569d5cd1f183a5ab57f769e
+  hermes-engine: cebda0b1b2f376bc0174c1055ecc0556a8dfee3e
   NitroModules: 00c15fcce98b504f21bd5b0c99276db161efcb39
-  NitroNode: 53eb30c3d353c1ec5007ad1d182aeb23360b9469
+  NitroNode: 996abe993d8c534a80bcd8029107cb6364b386fd
   RCTDeprecation: af44b104091a34482596cd9bd7e8d90c4e9b4bd7
   RCTRequired: bb77b070f75f53398ce43c0aaaa58337cebe2bf6
   RCTSwiftUI: afc0a0a635860da1040a0b894bfd529da06d7810
@@ -2217,7 +2217,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: e96e93b493d8d86eeaee3e590ba0be53f6abe46f
   ReactCodegen: c00d0836354d71c00275db9fb1c70dee27cdab44
   ReactCommon: 07572bf9e687c8a52fbe4a3641e9e3a1a477c78e
-  ReactNativeDependencies: 9afb992dd41b671146bac8ab5982bf9354ec0909
+  ReactNativeDependencies: bb6a28206ba15f96ffe0e7cb73997e1f25b0872c
   RNDeviceInfo: 4c852998208b60dc192ae3529e5867817719ad1e
   Yoga: c0b3f2c7e8d3e327e450223a2414ca3fa296b9a2
 
