@@ -65,6 +65,7 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridNitroNodeCryptoX509CertificateHandleSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeNetSocketSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeNetServerSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeDgramSocketSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsSocketSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsServerSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsSecureContextSpec.cpp
@@ -74,6 +75,7 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridNitroNodeOsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeDnsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeNetSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridNitroNodeDgramSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeTlsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeFsConstantsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridNitroNodeFsSpec.cpp

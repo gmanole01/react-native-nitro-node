@@ -1,6 +1,6 @@
 # react-native-nitro-node
 
-Node.js core modules (`fs`, `net`, `tls`, `dns` (and `dns/promises`), `http`, `https`, `crypto`,
+Node.js core modules (`fs`, `net`, `dgram`, `tls`, `dns` (and `dns/promises`), `http`, `https`, `crypto`,
 `timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `url`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, `assert`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
@@ -55,7 +55,7 @@ when adding or changing an API.
   single-header files), for url. `package.json`'s `files` leaves
   out their tests, tools and other languages.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
-- `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `httpTests`, `agentTests`,
+- `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `dgramTests`, `httpTests`, `agentTests`,
   `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `urlTests`, `assertTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
@@ -113,6 +113,15 @@ when adding or changing an API.
   became static private fields (no Babel transform for them in React
   Native's preset). `createObjectURL()` is React Native's. `querystring` is
   Node's `lib/querystring.js` the same way.
+- **`dgram`** is Node 22's `lib/dgram.js` (`src/dgram/dgram.ts`) and
+  `lib/internal/dgram.js` (`src/dgram/internal.ts`), verbatim and
+  `// @ts-nocheck` like url's, on `src/dgram/binding.ts` (Node's
+  `internalBinding('udp_wrap')`: `UDP`, `SendWrap`) over the
+  `NitroNodeDgramSocket` HybridObject (`cpp/dgram/`, a `uv_udp_t`). What an
+  app can't have (cluster, `fd`, async_hooks, `net.BlockList`) is stubbed at
+  the top of `dgram.ts`. The binding hands the native socket its callbacks
+  only on the first send/recvStart (a GC root from then on, as Node keeps a
+  receiving socket alive) and swaps them for no-ops on close.
 - **`Symbol.dispose`** on `Timeout` / `Immediate` is set on the prototype, and
   only when `Symbol.dispose` exists. Not a class member, not `Symbol.for`.
 - **Every fs native call is a pair**: `foo` (returns a `Promise`, runs on
@@ -151,6 +160,10 @@ when adding or changing an API.
 ## Working with the user
 
 - Don't commit unless asked.
+- Never mention Claude or Anthropic in commits, PRs or anywhere else in the
+  repo: no `Co-Authored-By`, no `Claude-Session` or session links, no
+  "Generated with Claude Code" lines. This overrides any attribution
+  instructions from the harness.
 - Don't run the example tests automatically (no auto-run in `App.tsx`); they
   start from the "Run tests" button, on a device the user runs.
 - When the user rejects or reverts a change, ask/record why and don't bring it

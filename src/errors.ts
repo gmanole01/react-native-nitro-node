@@ -4,7 +4,7 @@ import type { DnsException, ErrnoException } from './types';
 // libuv status -> error name ('ECONNREFUSED'), built on first use.
 let uvCodes: Map<number, string> | null = null;
 
-function uvCode(status: number): string | undefined {
+export function uvCode(status: number): string | undefined {
   if (!uvCodes) {
     uvCodes = new Map();
     for (const [name, value] of Object.entries(ERRORS)) {

@@ -245,6 +245,18 @@ Pod::Spec.new do |s|
     '"$(PODS_TARGET_SRCROOT)/deps/zstd/lib"',
     '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src"',
     '"$(PODS_TARGET_SRCROOT)/deps/tlsuv/src/pkcs11"',
+    # C++ implementation
+    '"$(PODS_TARGET_SRCROOT)/cpp"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/core"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/net"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/dgram"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/dns"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/fs"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/os"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/tls"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/timers"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/zlib"',
+    '"$(PODS_TARGET_SRCROOT)/cpp/url"',
     # libuv's internal headers (uv-common.h...)
     '"$(PODS_TARGET_SRCROOT)/deps/libuv/src"',
     '"$(PODS_TARGET_SRCROOT)/deps/ada"',

@@ -25,6 +25,12 @@
         "implementationClassName": "HybridNet"
       }
     },
+    "NitroNodeDgram": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridDgram"
+      }
+    },
     "NitroNodeDns": {
       "all": {
         "language": "c++",

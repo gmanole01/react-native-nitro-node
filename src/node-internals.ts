@@ -23,7 +23,7 @@ function formatList(array: string[], type = 'and'): string {
   }
 }
 
-function determineSpecificType(value: any): string {
+export function determineSpecificType(value: any): string {
   if (value === null) {
     return 'null';
   } else if (value === undefined) {

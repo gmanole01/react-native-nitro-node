@@ -1,5 +1,7 @@
 import { NitroModules } from 'react-native-nitro-modules';
 import type {
+  NitroNodeDgram,
+  NitroNodeDgramSocket,
   NitroNodeDns,
   NitroNodeFs,
   NitroNodeFsConstants,
@@ -39,6 +41,14 @@ export const NitroOs =
 export const NitroTimers =
   NitroModules.createHybridObject<NitroNodeTimers>('NitroNodeTimers');
 
+let NitroDgram: NitroNodeDgram | null = null;
+/** A new UDP socket, for dgram. */
+export function createNitroDgramSocket(): NitroNodeDgramSocket {
+  NitroDgram ??=
+    NitroModules.createHybridObject<NitroNodeDgram>('NitroNodeDgram');
+  return NitroDgram.createSocket();
+}
+
 export const NitroUrl =
   NitroModules.createHybridObject<NitroNodeUrl>('NitroNodeUrl');
 
@@ -49,6 +59,7 @@ export function createNitroZlib(): NitroNodeZlib {
 
 // types
 export type {
+  NitroNodeDgramSocket,
   NitroNodeNet,
   NitroNodeNetSocket,
   NitroNodeNetServer,
