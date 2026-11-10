@@ -1009,6 +1009,10 @@ export class Server extends EventEmitter {
       incoming.complete = true;
       incoming.push(null);
       incoming = null;
+      // The body may have paused the socket when the request's buffer filled
+      // up, in the same chunk that ended it: the request won't read again
+      // (and resume it), so the socket reads for the next request here.
+      socket.resume();
     };
 
     function onData(data: Buffer) {

@@ -18,8 +18,8 @@
 # only with the prefix header) also covers the perlasm symbols.
 #
 # Outputs build/openssl-apple/NitroNodeOpenSSL-<version>.zip, which
-# NitroNode.podspec downloads from this repo's `openssl-apple-<version>`
-# GitHub release.
+# NitroNode.podspec downloads from this repo's `openssl-apple-<version>-<n>`
+# GitHub release (a new <n> for each new build of the same version).
 #
 # Usage: scripts/build-openssl-apple.sh [openssl-version]
 
@@ -41,6 +41,7 @@ JOBS="$(sysctl -n hw.ncpu)"
 SLICES=(
   "ios-arm64|iphoneos|ios|arm64|apple-ios12.0|"
   "ios-arm64_x86_64-simulator|iphonesimulator|ios-simulator|arm64 x86_64|apple-ios12.0-simulator|"
+  "macos-arm64_x86_64|macosx|macos|arm64 x86_64|apple-macos11.0|"
   "xros-arm64|xros|xros|arm64|apple-xros1.0|no-async"
   "xros-arm64_x86_64-simulator|xrsimulator|xros-simulator|arm64 x86_64|apple-xros1.0-simulator|no-async"
 )

@@ -12,7 +12,12 @@ Pod::Spec.new do |s|
   s.license      = package["license"]
   s.authors      = package["author"]
 
-  s.platforms    = { :ios => min_ios_version_supported, :visionos => 1.0 }
+  # macOS through react-native-macos, which defines min_macos_version_supported
+  s.platforms    = {
+    :ios => min_ios_version_supported,
+    :osx => defined?(min_macos_version_supported) ? min_macos_version_supported : "14.0",
+    :visionos => 1.0,
+  }
   s.source       = { :git => "https://github.com/gmanole01/react-native-nitro-node.git", :tag => "#{s.version}" }
 
   # Our prebuilt static OpenSSL, for TLS and crypto (scripts/build-openssl-apple.sh).
@@ -23,15 +28,19 @@ Pod::Spec.new do |s|
   # refuses two pods vendoring a framework with the same name.
   #
   # Downloaded while the podspec is evaluated, because prepare_command is
-  # skipped for :path pods.
+  # skipped for :path pods. A new build of the same version (a new platform)
+  # is a new release, openssl-apple-<version>-<n>; the checksum, kept next to
+  # the extracted files, says when the one in ios/openssl is outdated.
   openssl_version = "3.6.2"
-  openssl_sha256 = "47e2000d40b1eab9c46d48167f34524a6f65dc3da5904e90c66ad76456c0ee8d"
+  openssl_release = "openssl-apple-#{openssl_version}-1"
+  openssl_sha256 = "15909986ba62e80419984519ab3159718b5e9645496e6da91b1638f837b8a17f"
   openssl_dir = File.join(__dir__, "ios", "openssl")
   openssl_prefix_header = File.join(openssl_dir, "nitronode_openssl_prefix.h")
+  openssl_stamp = File.join(openssl_dir, ".sha256")
 
-  unless File.exist?(openssl_prefix_header)
+  unless File.exist?(openssl_prefix_header) && File.exist?(openssl_stamp) && File.read(openssl_stamp).strip == openssl_sha256
     archive = File.join(__dir__, "ios", "NitroNodeOpenSSL.zip")
-    url = "https://github.com/gmanole01/react-native-nitro-node/releases/download/openssl-apple-#{openssl_version}/NitroNodeOpenSSL-#{openssl_version}.zip"
+    url = "https://github.com/gmanole01/react-native-nitro-node/releases/download/#{openssl_release}/NitroNodeOpenSSL-#{openssl_version}.zip"
 
     Pod::UI.puts "[NitroNode] Downloading static OpenSSL #{openssl_version}..."
     FileUtils.mkdir_p(File.join(__dir__, "ios"))
@@ -46,6 +55,7 @@ Pod::Spec.new do |s|
 
     system("unzip -q #{archive.shellescape} -d #{openssl_dir.shellescape}") || raise("[NitroNode] Failed to extract static OpenSSL")
     File.delete(archive)
+    File.write(openssl_stamp, openssl_sha256)
   end
 
   # crypto: libsodium (XSalsa20 ciphers), off by default. Set SODIUM_ENABLED=1
@@ -302,10 +312,13 @@ Pod::Spec.new do |s|
     # pod's headers (see source_files): react-native-quick-crypto's would win
     # over ours of the same name
     'USE_HEADERMAP' => 'NO',
-    # BLAKE3: no NEON on the x86_64 simulator, and no x86 SIMD anywhere (its
-    # sources are excluded above, but blake3_dispatch.c still refers to them)
+    # BLAKE3: no NEON on x86_64 (the simulator, Intel Macs), and no x86 SIMD
+    # anywhere (its sources are excluded above, but blake3_dispatch.c still
+    # refers to them)
     'EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*][arch=x86_64]' => 'deps/blake3/c/blake3_neon.c',
     'GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*][arch=x86_64]' => "#{definitions} BLAKE3_NO_AVX512 BLAKE3_NO_AVX2 BLAKE3_NO_SSE41 BLAKE3_NO_SSE2",
+    'EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*][arch=x86_64]' => 'deps/blake3/c/blake3_neon.c',
+    'GCC_PREPROCESSOR_DEFINITIONS[sdk=macosx*][arch=x86_64]' => "#{definitions} BLAKE3_NO_AVX512 BLAKE3_NO_AVX2 BLAKE3_NO_SSE41 BLAKE3_NO_SSE2",
   }
 
   load 'nitrogen/generated/ios/NitroNode+autolinking.rb'

@@ -147,39 +147,55 @@ export function getOwnNonIndexProperties(object: object, filter: number): Proper
  * React Native's Promise is the `promise` npm package (promise/setimmediate),
  * which keeps its state in enumerable fields: _x (deferred state), _y
  * (0 pending, 1 fulfilled, 2 rejected, 3 adopted the promise in _z), _z (the
- * value) and _A (the callbacks).
+ * value) and _A (the callbacks). Hermes' own Promise, which React Native uses
+ * when Hermes has one (react-native-macos 0.83), is the same code with the
+ * fields named _h, _i, _j and _k.
  */
-export const polyfillPromiseFields = ['_x', '_y', '_z', '_A'];
+const promiseLayouts = [
+  ['_x', '_y', '_z', '_A'],
+  ['_h', '_i', '_j', '_k'],
+];
+
+/** The promise's fields (deferred state, state, value, callbacks), or undefined. */
+function promiseFields(value: unknown): string[] | undefined {
+  if (!isPromise(value)) {
+    return undefined;
+  }
+  return promiseLayouts.find(
+    fields =>
+      typeof (value as Any)[fields[1]] === 'number' &&
+      fields.every(field => Object.prototype.hasOwnProperty.call(value, field)),
+  );
+}
 
 export function isPolyfillPromise(value: unknown): boolean {
-  return (
-    isPromise(value) &&
-    typeof (value as Any)._y === 'number' &&
-    polyfillPromiseFields.every(field => Object.prototype.hasOwnProperty.call(value, field))
-  );
+  return promiseFields(value) !== undefined;
 }
 
 /** Own keys without the polyfill's state fields: Node shows and compares no state. */
 export function withoutPromiseFields<K extends PropertyKey>(value: unknown, keys: K[]): K[] {
-  return isPolyfillPromise(value) ? keys.filter(key => !polyfillPromiseFields.includes(key as string)) : keys;
+  const fields = promiseFields(value);
+  return fields ? keys.filter(key => !fields.includes(key as string)) : keys;
 }
 
 export function getPromiseDetails(promise: unknown): [number, unknown?] {
-  if (!isPolyfillPromise(promise)) {
+  let p = promise as Any;
+  let fields = promiseFields(p);
+  if (!fields) {
     return [kUnknown];
   }
-  let p = promise as Any;
   // adopted: the state is the other promise's
-  while (p._y === 3 && isPolyfillPromise(p._z)) {
-    p = p._z;
+  while (p[fields[1]] === 3 && promiseFields(p[fields[2]])) {
+    p = p[fields[2]];
+    fields = promiseFields(p)!;
   }
-  switch (p._y) {
+  switch (p[fields[1]]) {
     case 0:
       return [constants.kPending];
     case 1:
-      return [constants.kFulfilled, p._z];
+      return [constants.kFulfilled, p[fields[2]]];
     case 2:
-      return [constants.kRejected, p._z];
+      return [constants.kRejected, p[fields[2]]];
     default:
       return [kUnknown];
   }

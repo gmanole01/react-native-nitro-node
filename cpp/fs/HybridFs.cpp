@@ -50,7 +50,10 @@ uint8_t* rangeOf(const std::shared_ptr<ArrayBuffer>& buffer, double offset, doub
   if (offset < 0 || length < 0 || offset + length > static_cast<double>(buffer->size())) {
     return nullptr;
   }
-  return buffer->data() + static_cast<size_t>(offset);
+  // An empty ArrayBuffer may have no data at all (Hermes gives nullptr)
+  static uint8_t empty;
+  uint8_t* data = buffer->data();
+  return data == nullptr ? &empty : data + static_cast<size_t>(offset);
 }
 
 // A copy of [offset, offset + length) of `buffer`. JS-owned buffers can only

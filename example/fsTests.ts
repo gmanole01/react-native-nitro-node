@@ -89,6 +89,12 @@ export async function runFsTests(step: Step) {
     expectEqual('after appendFileSync', fs.readFileSync(file, 'latin1'), 'hi!');
     fs.writeFileSync(file, new Uint8Array([0, 1, 2, 255]));
     expectEqual('Uint8Array', fs.readFileSync(file).toString('hex'), '000102ff');
+
+    // an empty ArrayBuffer may have no data pointer at all
+    fs.writeFileSync(file, '');
+    expectEqual('empty file', fs.readFileSync(file, 'utf8'), '');
+    fs.appendFileSync(file, Buffer.alloc(0));
+    expectEqual('empty append', fs.statSync(file).size, 0);
   });
 
   await step('fs writeFile / readFile on the thread pool', async () => {

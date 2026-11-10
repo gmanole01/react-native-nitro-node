@@ -8,7 +8,7 @@
 
 [![npm](https://img.shields.io/npm/v/react-native-nitro-node?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-nitro-node)
 [![license](https://img.shields.io/npm/l/react-native-nitro-node?color=blue)](./LICENSE)
-![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)
+![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-lightgrey)
 ![powered by Nitro](https://img.shields.io/badge/powered%20by-Nitro%20Modules-orange)
 
 </div>
@@ -62,9 +62,11 @@ Then install the native code:
 
 ```sh
 cd ios && pod install
+# or, for macOS (react-native-macos):
+cd macos && pod install
 ```
 
-Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt, so there is nothing else to install: on iOS, `pod install` downloads this library's static build, and on Android it's the [`openssl-static`](https://central.sonatype.com/artifact/io.github.ronickg/openssl-static) Maven package.
+Android needs no extra steps; autolinking picks the library up. OpenSSL comes prebuilt, so there is nothing else to install: on iOS and macOS, `pod install` downloads this library's static build, and on Android it's the [`openssl-static`](https://central.sonatype.com/artifact/io.github.ronickg/openssl-static) Maven package.
 
 The XSalsa20 ciphers of `crypto` need [libsodium](https://libsodium.org), which is left out by default. To build it in, set `SODIUM_ENABLED=1` when you run `pod install`, and `sodiumEnabled=true` in your app's `android/gradle.properties`.
 
@@ -146,6 +148,15 @@ It also wraps the global `Proxy` (and `Proxy.revocable`), so that [`util.types.i
 > [!NOTE]
 > The library contains native code, so it does not work in Expo Go. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead.
 
+### macOS
+
+On macOS the library runs with [react-native-macos](https://github.com/microsoft/react-native-macos), from the same pod as on iOS. A sandboxed app (the default, `com.apple.security.app-sandbox`) needs the network entitlements for what it uses:
+
+- `com.apple.security.network.client`: outgoing connections (`net.connect()`, `http.request()`, `tls.connect()`, …) and DNS lookups
+- `com.apple.security.network.server`: `listen()` (`net.createServer()`, `http.createServer()`, …), and `bind()` of UDP sockets
+
+Without them those calls fail with `EPERM`. Files outside the app's container need the user's consent (an open panel, or the `com.apple.security.files.*` entitlements), as for any sandboxed app.
+
 ### Requirements
 
 | | Minimum |
@@ -153,6 +164,7 @@ It also wraps the global `Proxy` (and `Proxy.revocable`), so that [`util.types.i
 | React Native | New Architecture |
 | `react-native-nitro-modules` | 0.35 |
 | iOS | 15.1 |
+| macOS ([react-native-macos](https://github.com/microsoft/react-native-macos)) | 14.0 |
 | Android | API 23 (Android 6.0) |
 
 ## 🚀 Usage
@@ -196,7 +208,7 @@ import os from 'react-native-nitro-node/os';
 import { Buffer } from 'react-native-nitro-node/buffer';
 
 // tmpdir() for scratch files; for files that must persist, a folder inside
-// os.homedir(), e.g. `${os.homedir()}/Documents` on iOS or `${os.homedir()}/files` on Android
+// os.homedir(), e.g. `${os.homedir()}/Documents` on iOS and macOS or `${os.homedir()}/files` on Android
 const dir = os.tmpdir();
 
 fs.mkdirSync(`${dir}/notes`, { recursive: true });
@@ -385,7 +397,7 @@ clearInterval(poll);
 setImmediate(() => console.log('after the I/O that is already in'));
 ```
 
-They run on the library's libuv loop, not on React Native's timers, which React Native pauses while the app is in the background. This library's timers keep going for as long as the operating system lets the app run. iOS suspends an app soon after it goes to the background unless it has a background mode or task, and Android may freeze apps in the background; nothing runs in JavaScript then.
+They run on the library's libuv loop, not on React Native's timers, which React Native pauses while the app is in the background. This library's timers keep going for as long as the operating system lets the app run. iOS suspends an app soon after it goes to the background unless it has a background mode or task, and Android may freeze apps in the background; nothing runs in JavaScript then. macOS keeps running apps in the background, although App Nap may slow down the timers of an app whose windows are all hidden.
 
 The global `setTimeout` and friends stay React Native's: import these where you need them. With [`withNitroNode`](#metro), packages that `require('timers')` get them too.
 
@@ -486,7 +498,7 @@ dns.lookup('nope.invalid', (err) => {
 | `open` / `close` / `read` / `write` / `ftruncate` (+ `Sync`) | ✅ | Every Node string flag (`'r'`, `'w+'`, `'ax'`, …); `position: null` uses the file offset. 64-bit positions on every platform and ABI, so files past 2 GiB work |
 | `mkdir` / `readdir` / `rmdir` / `rm` / `unlink` (+ `Sync`) | ✅ | `mkdir({ recursive })`, `rm({ recursive, force })` |
 | `access` / `exists` / `existsSync` | ✅ | |
-| `stat` / `lstat` / `fstat` (+ `Sync`) | ✅ | `Stats` with every field, the `*Ms` times with their nanoseconds and as `Date`s, and `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `throwIfNoEntry`. `birthtime` is the creation time on iOS; Android doesn't record one, so it's `ctime`, as in Node without `statx` |
+| `stat` / `lstat` / `fstat` (+ `Sync`) | ✅ | `Stats` with every field, the `*Ms` times with their nanoseconds and as `Date`s, and `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `throwIfNoEntry`. `birthtime` is the creation time on iOS and macOS; Android doesn't record one, so it's `ctime`, as in Node without `statx` |
 | `stat({ bigint: true })` / `BigIntStats` | ❌ | Planned; throws a `TypeError` for now |
 | `statfs` (+ `Sync`) | ✅ | |
 | `constants` | ✅ | The platform's real values; constants a platform lacks are left out |
@@ -521,7 +533,7 @@ dns.lookup('nope.invalid', (err) => {
 | `addMembership()` / `dropMembership()`, `addSourceSpecificMembership()` / `dropSourceSpecificMembership()` | ✅ | iOS needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`) to send or receive multicast and broadcast; Android, a `WifiManager.MulticastLock` to receive multicast |
 | `get/setRecvBufferSize()`, `get/setSendBufferSize()`, `getSendQueueSize()`, `getSendQueueCount()` | ✅ | Android (Linux) reports double the size set, as Node there |
 | Events | ✅ | `listening`, `message`, `connect`, `error`, `close` |
-| `reusePort` | ⚠️ | On Android, as Node on Linux: sockets share the port and its datagrams. On iOS `bind` fails with `ENOTSUP`, as Node on macOS: libuv has no `SO_REUSEPORT` for Apple systems |
+| `reusePort` | ⚠️ | On Android, as Node on Linux: sockets share the port and its datagrams. On iOS and macOS `bind` fails with `ENOTSUP`, as Node on macOS: libuv has no `SO_REUSEPORT` for Apple systems |
 | `bind({ fd })`, cluster workers | ❌ | No file descriptors to open: `ERR_INVALID_FD_TYPE` |
 | `receiveBlockList` / `sendBlockList` | ⚠️ | There is no `net.BlockList` yet: any object with Node's `check(address, family)` works |
 | `Symbol.asyncDispose` | ⚠️ | Only where the engine has `Symbol.asyncDispose` |
@@ -640,7 +652,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 
 | API | Status | Notes |
 |---|:---:|---|
-| `util.inspect()` / `InspectOptions` | ✅ | Every option (`depth`, `colors`, `compact`, `breakLength`, `sorted`, `getters`, `showHidden`, `showProxy`, `maxArrayLength`, `maxStringLength`, `numericSeparator`), `inspect.custom`, `inspect.defaultOptions`. Promises show their state from React Native's `Promise` (the `promise` package), as Node; a promise of another implementation shows `Promise { <unknown> }`. Hermes can't show the entries of a Map or Set iterator, or WeakMap/WeakSet entries with `showHidden` (`<items unknown>`). Classes and async functions that Babel compiled show as plain functions |
+| `util.inspect()` / `InspectOptions` | ✅ | Every option (`depth`, `colors`, `compact`, `breakLength`, `sorted`, `getters`, `showHidden`, `showProxy`, `maxArrayLength`, `maxStringLength`, `numericSeparator`), `inspect.custom`, `inspect.defaultOptions`. Promises show their state from React Native's `Promise` (the `promise` package, or Hermes' own copy of it), as Node; a promise of another implementation shows `Promise { <unknown> }`. Hermes can't show the entries of a Map or Set iterator, or WeakMap/WeakSet entries with `showHidden` (`<items unknown>`). Classes and async functions that Babel compiled show as plain functions |
 | `util.format()` / `util.formatWithOptions()` | ✅ | Node's, on `inspect()` |
 | `util.isDeepStrictEqual()` | ✅ | Node's comparison: prototypes, cycles, Maps, Sets, typed arrays, boxed primitives, errors, … |
 | `util.promisify()` / `promisify.custom` | ✅ | |
@@ -660,7 +672,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `stream/promises` | ✅ | `pipeline()` and `finished()` returning promises, with `signal`: the same object as `stream.promises`, as in Node |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
-| `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android |
+| `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android. On macOS, `$TMPDIR` and `$HOME`: the app's container for a sandboxed app, the user's own folders otherwise |
 | `os.EOL` | ✅ | |
 | `os.networkInterfaces()` | ✅ | As Node's, from libuv: addresses by interface, with `cidr` and `scopeid`. The system hides MAC addresses from apps: on iOS most are `02:00:00:00:00:00`, on Android 11+ `00:00:00:00:00:00` |
 | Rest of `os` (`platform`, `cpus`, …) | ❌ | |
@@ -680,7 +692,7 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 
 ### `zlib`
 
-Node 22's `lib/zlib.js`, ported: the same streams, options, flush handling, errors and messages. gzip and deflate run on the system's zlib (iOS's and Android's); Brotli 1.1.0 and zstd 1.5.7, the versions Node 22 bundles, are built in. The callback functions and streams compress and decompress on a worker thread; the `*Sync` ones on the calling thread, as in Node.
+Node 22's `lib/zlib.js`, ported: the same streams, options, flush handling, errors and messages. gzip and deflate run on the system's zlib (Apple's and Android's); Brotli 1.1.0 and zstd 1.5.7, the versions Node 22 bundles, are built in. The callback functions and streams compress and decompress on a worker thread; the `*Sync` ones on the calling thread, as in Node.
 
 | API | Status | Notes |
 |---|:---:|---|
@@ -708,7 +720,7 @@ flowchart TB
         Ares["c-ares<br/><sub>async DNS</sub>"]
     end
 
-    OS[("iOS / Android<br/>BSD sockets · trust store")]
+    OS[("iOS / macOS / Android<br/>BSD sockets · trust store")]
 
     API --> Nitro
     Nitro -- "post work" --> Loop
@@ -729,7 +741,7 @@ flowchart TB
 - **UDP** sockets are `uv_udp_t` handles on the loop thread, under Node's own `lib/dgram.js`, which drives them through the same API as Node's `UDPWrap`. A received datagram goes to JavaScript as the buffer libuv read it into, without a copy; a send copies its buffers into one datagram, since the JavaScript ones can't be read off the JS thread.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **crypto** is [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto)'s implementation: C++ HybridObjects over OpenSSL (the same OpenSSL 3.6 as TLS) and Node's [ncrypto](https://github.com/nodejs/ncrypto), with [simdutf](https://github.com/simdutf/simdutf) for base64 and hex. Most calls run on the JS thread; the slow ones, such as key generation and key derivation, also have asynchronous forms that run on Nitro's thread pool.
-- **Certificates** are checked against the operating system's trust store. On iOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
+- **Certificates** are checked against the operating system's trust store. On iOS and macOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
 
 ## 🔐 Security notes
 
@@ -744,7 +756,7 @@ Know the limits:
 > [!NOTE]
 > - **Android: only the system's CA certificates count.** User-installed CAs, your app's [Network Security Config](https://developer.android.com/privacy-and-security/security-config) and its certificate pinning do not apply to this library's connections, and certificates are not checked for revocation.
 > - **Errors are not as detailed as Node's.** A refused certificate fails with `certificate verify failed`, without Node's codes such as `CERT_HAS_EXPIRED` or `ERR_TLS_CERT_ALTNAME_INVALID`.
-> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. It stays separate from any other OpenSSL in your app: on iOS its symbols are renamed (`rnnn_*`), on Android they are kept out of the library's exported symbols. This includes react-native-quick-crypto: with both installed, the app has two separate copies of OpenSSL.
+> - **OpenSSL is part of this package.** It's linked into your app statically, so OpenSSL security fixes reach you through updates of this library: keep it up to date. It stays separate from any other OpenSSL in your app: on iOS and macOS its symbols are renamed (`rnnn_*`), on Android they are kept out of the library's exported symbols. This includes react-native-quick-crypto: with both installed, the app has two separate copies of OpenSSL.
 
 ## 🗺️ Roadmap
 

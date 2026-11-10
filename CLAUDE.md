@@ -4,7 +4,8 @@ Node.js core modules (`fs`, `net`, `dgram`, `tls`, `dns` (and `dns/promises`), `
 `timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `url`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, `assert`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
-working while the app is in the background. Author: George Manole.
+working while the app is in the background. Platforms: iOS, Android, and
+macOS through react-native-macos (the same pod as iOS). Author: George Manole.
 
 README.md is the user-facing documentation (usage, the compatibility tables,
 How it works, Roadmap). Read it for what is implemented; keep it up to date
@@ -44,11 +45,16 @@ when adding or changing an API.
   (adapted from react-native-quick-crypto's), `NitroNodeOpenSSL.xcframework`
   with symbols renamed `rnnn_*` and `nitronode_openssl_prefix.h`
   force-included. The podspec downloads it into `ios/openssl/` from this repo's
-  `openssl-apple-<version>` GitHub release. Not quick-crypto's build: CocoaPods
+  `openssl-apple-<version>-<n>` GitHub release. Not quick-crypto's build: CocoaPods
   refuses two pods vendoring a framework with the same name. On Android the
   `openssl-static` prefab
   (`opensslstatic::ssl/crypto`), which tlsuv also links
   (`deps/tlsuv/src/openssl/CMakeLists.txt` is patched for it).
+- c-ares on Apple platforms: `ios/Frameworks/c-ares.xcframework`, built from
+  `deps/c-ares` by `scripts/build-cares-apple.sh` (iOS, simulator, macOS,
+  visionOS slices). The OpenSSL zip has the same slices; a new build of the
+  same OpenSSL version is a new release `openssl-apple-<version>-<n>`
+  (`openssl_release` and `openssl_sha256` in the podspec).
 - `deps/`: libuv, c-ares, tlsuv (vendored); blake3, ncrypto, simdutf
   (git submodules) and fastpbkdf2 (quick-crypto's patched copy), for crypto;
   brotli and zstd (git submodules), for zlib; ada (vendored, its release
@@ -99,7 +105,8 @@ when adding or changing an API.
   on `./primordials` (Node's primordials, built from their names) and
   `./internals` (what V8 gives Node, in JavaScript: brand checks, and markers
   where Hermes can't: iterator entries; a promise's state is read from React
-  Native's `promise` polyfill fields `_x`/`_y`/`_z`/`_A`, which `inspect` and
+  Native's `promise` polyfill fields `_x`/`_y`/`_z`/`_A` (`_h`/`_i`/`_j`/`_k`
+  in Hermes' own Promise, used by react-native-macos 0.83), which `inspect` and
   `isDeepStrictEqual` skip as keys). Plain globals are not
   taken from primordials there: Babel's module code uses `Object` before the
   destructuring would set it. `types.isProxy()` only knows the proxies made

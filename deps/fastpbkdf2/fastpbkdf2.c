@@ -17,9 +17,10 @@
 #include <assert.h>
 #include <string.h>
 #if defined(__GNUC__)
-  #if TARGET_OS_MACCATALYST
-    #include <machine/endian.h>  // Mac Catalyst
-  #else  
+  // TARGET_OS_* would need TargetConditionals.h; macOS's SDK has no endian.h
+  #if TARGET_OS_MACCATALYST || (defined(__APPLE__) && !__has_include(<endian.h>))
+    #include <machine/endian.h>  // Mac Catalyst, macOS
+  #else
     #include <endian.h>          // iOS
   #endif
 #endif

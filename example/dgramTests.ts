@@ -227,7 +227,7 @@ export async function runDgramTests(step: Step) {
       a.once('error', resolve);
     });
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'macos') {
       // libuv has no SO_REUSEPORT for Apple systems
       expectEqual('error', [err?.code, err?.message], ['ENOTSUP', 'bind ENOTSUP 127.0.0.1']);
       a.close();
