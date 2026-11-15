@@ -7,7 +7,8 @@
 
 namespace margelo::nitro::node {
 
-// Plain POSIX calls, each in two forms: the *Sync one runs on the calling (JS)
+// libuv's synchronous uv_fs calls (POSIX on iOS and Android, Win32 on
+// Windows), each in two forms: the *Sync one runs on the calling (JS)
 // thread, the other on Nitro's thread pool.
 class HybridFs : public HybridNitroNodeFsSpec {
 public:

@@ -362,8 +362,8 @@
     "clean": "git clean -dfX",
     "release": "semantic-release",
     "build": "npm run typecheck && bob build",
-    "codegen": "nitrogen --logLevel=\"debug\" && npm run build",
-    "postcodegen": "npm --prefix example run pod"
+    "codegen": "nitrogen --logLevel=\"debug\" && node scripts/generate-windows-autolinking.js && npm run build",
+    "postcodegen": "npm --prefix apps/mobile run pod"
   },
   "files": [
     "src",
@@ -376,6 +376,7 @@
     "!deps/brotli/c/{fuzz,tools}/**",
     "!deps/zstd/{build,contrib,doc,examples,programs,tests,zlibWrapper}/**",
     "!deps/zstd/lib/{deprecated,dictBuilder,dll,legacy}/**",
+    "!deps/zlib/{amiga,contrib,doc,examples,msdos,nintendods,old,os400,qnx,test,watcom,win32}/**",
     "nitrogen",
     "cpp",
     "nitro.json",
@@ -394,13 +395,19 @@
     "ios/**/*.swift",
     "ios/**/*.plist",
     "!ios/openssl",
+    "windows/NitroNode.sln",
+    "windows/ExperimentalFeatures.props",
+    "windows/NitroNode",
+    "!windows/NitroNode/obj",
+    "!windows/openssl",
+    "scripts/prepare-nitro-windows.js",
     "app.plugin.js",
     "*.podspec",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "workspaces": [
-    "example"
+    "apps/*"
   ],
   "repository": {
     "type": "git",

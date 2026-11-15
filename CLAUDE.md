@@ -4,8 +4,9 @@ Node.js core modules (`fs`, `net`, `dgram`, `tls`, `dns` (and `dns/promises`), `
 `timers` (and `timers/promises`), `stream` (and `stream/promises`), `zlib`, `url`, `util` (in part), `process`, `buffer`, `events`, `stream`, `os`, `path`, `querystring`,
 `punycode`, `assert`, and `http2` as stubs) for React Native, built on **libuv** through **Nitro Modules** (nitrogen 0.35.x).
 Goal: packages written for Node work unchanged in a React Native app, and keep
-working while the app is in the background. Platforms: iOS, Android, and
-macOS through react-native-macos (the same pod as iOS). Author: George Manole.
+working while the app is in the background. Platforms: iOS, Android,
+macOS through react-native-macos (the same pod as iOS), and Windows through
+react-native-windows (in progress, not built yet). Author: George Manole.
 
 README.md is the user-facing documentation (usage, the compatibility tables,
 How it works, Roadmap). Read it for what is implemented; keep it up to date
@@ -17,7 +18,8 @@ when adding or changing an API.
   and structs). After changing it run `npx nitrogen`, which regenerates
   `nitrogen/generated/` (never edit that by hand). New native files must also
   be added to `android/CMakeLists.txt` (sources and include dirs) and
-  `NitroNode.podspec` (header paths), and new HybridObjects to `nitro.json`
+  `NitroNode.podspec` (header paths) and `windows/NitroNode/NitroNode.vcxproj`
+  (include dirs; its sources are globs), and new HybridObjects to `nitro.json`
   autolinking. Nitrogen adding files means `pod install` / a Gradle sync.
 - `src/native/index.ts`: creates the HybridObjects and exports them to the TS
   modules.
@@ -31,8 +33,8 @@ when adding or changing an API.
 - `src/polyfill/index.ts`: `react-native-nitro-node/polyfill`, a side-effect
   import (first in the app's entry file) that sets `global.Buffer` and
   `global.crypto` through crypto's `install()`, and wraps `Proxy` for
-  util.types.isProxy(). The example imports it first
-  in `example/index.js`.
+  util.types.isProxy(). The example apps import it first
+  in their `index.js`.
 - `src/utils.ts`, `src/errors.ts` (`fsError`, errno → Node error codes).
 - `cpp/core/`: `UVLoop` (the single libuv loop on its own thread, `post` /
   `runSync`, FIFO, never destroyed) and `CallbackSlot` (a mutex-guarded JS
@@ -60,8 +62,31 @@ when adding or changing an API.
   brotli and zstd (git submodules), for zlib; ada (vendored, its release
   single-header files), for url. `package.json`'s `files` leaves
   out their tests, tools and other languages.
+- `zlib` (git submodule, 1.3.1) in `deps/` is for Windows only: iOS and
+  Android use the system's.
+- `windows/`: the react-native-windows library (`NitroNode.sln`,
+  `NitroNode/NitroNode.vcxproj`, a WinRT DLL from RNW 0.84's `cpp-lib`
+  template; autolinking finds it). It builds everything from source, as the
+  podspec does: `cpp/`, Nitrogen's `shared/` code, `deps/`, and Nitro's own
+  C++ core, which react-native-nitro-modules has no Windows project for.
+  `scripts/prepare-nitro-windows.js` (run by MSBuild) copies that core flat
+  into `windows/NitroNode/obj/nitro/NitroModules` and patches its
+  `ArrayBuffer` → JS conversion: RNW gives library DLLs a `JsiAbiRuntime`,
+  whose `createArrayBuffer(MutableBuffer)` crashes, so JS gets a copy. The
+  DLL provides the `NitroModules` TurboModule (`NitroModulesTurboModule`,
+  `install()`), Nitro's ThreadUtils/Logger for Windows (`NitroPlatform.cpp`),
+  and registers our HybridObjects from `NitroNodeAutolinking.g.cpp`, generated
+  from `nitro.json` by `scripts/generate-windows-autolinking.js` (`npm run
+  codegen`; nitrogen has no Windows target). OpenSSL: our static build,
+  `scripts/build-openssl-windows.ps1` (/MD, no renaming: the DLL exports only
+  its WinRT entry points), downloaded by the vcxproj from an
+  `openssl-windows-<version>-<n>` release (`NitroNodeOpenSSLSha256`; empty
+  until the first release, so it must be built locally with `-Install`).
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
-- `example/`: the test app. `App.tsx` + `*Tests.ts` (`netTests`, `dgramTests`, `httpTests`, `agentTests`,
+- `apps/`: yarn workspaces. `apps/windows` is react-native-windows' `cpp-app`
+  template (app `NitroNodeExample`) whose `index.js` registers
+  `../mobile/App`: one test app and one set of suites for every platform.
+- `apps/mobile/`: the test app (iOS, Android, macOS). `App.tsx` + `*Tests.ts` (`netTests`, `dgramTests`, `httpTests`, `agentTests`,
   `tlsTests`, `fsTests`, `osTests`, `timersTests`, `cryptoTests`, `zlibTests`, `utilTests`, `urlTests`, `assertTests`, `gcTests`,
   `memoryTest`), runner in `testUtils.ts`.
 
@@ -135,8 +160,12 @@ when adding or changing an API.
   Nitro's thread pool via `Promise<T>::async`) and `fooSync` (calling thread).
   Node's callback/promise APIs use the async one, `*Sync` the sync one. Shared
   work lives in free functions in the anonymous namespace of `HybridFs.cpp`.
-- **Native error convention**: numeric calls return the result or `-errno`;
-  others throw `"[errno N]"`. TS turns these into Node errors with `check`,
+- **fs is libuv's synchronous `uv_fs_*`** (no callback, no loop: they run on
+  the calling thread), so it works the same on Windows. Don't go back to
+  direct POSIX calls.
+- **Native error convention**: numeric calls return the result or the libuv
+  status (`-errno` on iOS/Android, libuv's own codes on Windows); others
+  throw `"[errno N]"`. TS turns these into Node errors with `check`,
   `toFsError`, `fsError`.
 - **Callbacks must never be called twice**: don't write
   `.then(cb).catch(...)`. Use `.then(ok, err)` with the user callback wrapped
@@ -179,7 +208,10 @@ when adding or changing an API.
   scratchpad that mock the Nitro HybridObjects (`NitroTimers`, `NitroFs`, ...)
   and run the TS modules / example test files, standalone C++ builds of the
   native code against libuv (with ASan), and real Metro bundles of the example
-  to check resolution. Run `npx tsc --noEmit` at the root and in `example/`.
-- Add or update example tests for new features (`example/*Tests.ts`) and the
+  to check resolution (for `apps/windows`, Metro directly with `--platform
+  windows` and `react-native` mapped to `react-native-windows`: the RN CLI
+  can't load RNW's platform on macOS). Run `npx tsc --noEmit` at the root and
+  in `apps/mobile/`.
+- Add or update example tests for new features (`apps/mobile/*Tests.ts`) and the
   README alongside the code.
 - Code style: match the surrounding code; comments explain why, briefly.

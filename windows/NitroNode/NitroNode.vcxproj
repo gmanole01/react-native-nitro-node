@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This project was created with react-native-windows 0.84.2 (its cpp-lib template) -->
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(SolutionDir)\ExperimentalFeatures.props" Condition="Exists('$(SolutionDir)\ExperimentalFeatures.props')" />
+  <PropertyGroup Label="Globals">
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <MinimalCoreWin>true</MinimalCoreWin>
+    <ProjectGuid>{075C6AA5-D035-4EED-8E2B-8C2315C9F3AC}</ProjectGuid>
+    <ProjectName>NitroNode</ProjectName>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>NitroNode</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>17.0</MinimumVisualStudioVersion>
+    <AppxPackage>false</AppxPackage>
+  </PropertyGroup>
+  <PropertyGroup Label="ReactNativeWindowsProps">
+    <ReactNativeWindowsDir Condition="'$(ReactNativeWindowsDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\react-native-windows\package.json'))\node_modules\react-native-windows\</ReactNativeWindowsDir>
+    <RunAutolinkCheck>false</RunAutolinkCheck>
+  </PropertyGroup>
+  <PropertyGroup Label="NitroNode">
+    <!-- The package's root, where cpp/, deps/ and nitrogen/ are -->
+    <NitroNodeRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</NitroNodeRoot>
+    <!-- Nitro's C++ core, copied there by scripts/prepare-nitro-windows.js -->
+    <NitroNodeNitroDir>$(MSBuildThisFileDirectory)obj\nitro\</NitroNodeNitroDir>
+    <!--
+      Our prebuilt static OpenSSL (scripts/build-openssl-windows.ps1), downloaded
+      from this repo's GitHub release by NitroNodeDownloadOpenSSL below. A new
+      build of the same version is a new release, openssl-windows-<version>-<n>;
+      the checksum, kept next to the extracted files, says when the one in
+      windows/openssl is outdated.
+    -->
+    <NitroNodeOpenSSLVersion>3.6.2</NitroNodeOpenSSLVersion>
+    <NitroNodeOpenSSLRelease>openssl-windows-$(NitroNodeOpenSSLVersion)-1</NitroNodeOpenSSLRelease>
+    <NitroNodeOpenSSLSha256></NitroNodeOpenSSLSha256>
+    <NitroNodeOpenSSLRoot>$(NitroNodeRoot)windows\openssl\</NitroNodeOpenSSLRoot>
+    <NitroNodeOpenSSLDir>$(NitroNodeOpenSSLRoot)$(Platform)\</NitroNodeOpenSSLDir>
+  </PropertyGroup>
+  <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.WindowsSdk.Default.props" />
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="ReactNativeWindowsPropertySheets">
+    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props" Condition="Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props')" />
+  </ImportGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <!--
+        Only the WinRT glue (ReactPackageProvider, the NitroModules TurboModule)
+        uses pch.h; the C and C++ of cpp/, deps/, Nitro and Nitrogen don't.
+      -->
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <WarningLevel>Level3</WarningLevel>
+      <!-- /sdl turns CRT deprecation warnings into errors, which c-ares and libuv hit -->
+      <SDLCheck>false</SDLCheck>
+      <!--
+        /Zc:preprocessor: the conforming preprocessor, for __VA_OPT__ (LOGD).
+        /Zc:__cplusplus: the real __cplusplus, which simdutf and ada check.
+        /utf-8: the sources are UTF-8.
+      -->
+      <AdditionalOptions>%(AdditionalOptions) /bigobj /Zc:preprocessor /Zc:__cplusplus /utf-8</AdditionalOptions>
+      <DisableSpecificWarnings>4453;28204;4100;4244;4267;4996</DisableSpecificWarnings>
+      <PreprocessorDefinitions>
+        _WINRT_DLL;
+        NOMINMAX;
+        WIN32_LEAN_AND_MEAN;
+        _WIN32_WINNT=0x0A00;
+        WINVER=0x0A00;
+        _CRT_SECURE_NO_WARNINGS;
+        _CRT_NONSTDC_NO_DEPRECATE;
+        _WINSOCK_DEPRECATED_NO_WARNINGS;
+        CARES_STATICLIB;
+        TLS_IMPL=openssl;
+        USE_OPENSSL;
+        ZSTD_DISABLE_ASM=1;
+        ZSTD_LEGACY_SUPPORT=0;
+        ZSTD_MULTITHREAD=1;
+        ZSTD_STATIC_LINKING_ONLY=1;
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+      <AdditionalUsingDirectories>$(WindowsSDK_WindowsMetadata);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
+      <AdditionalIncludeDirectories>
+        $(MSBuildThisFileDirectory);
+        $(NitroNodeNitroDir);
+        $(NitroNodeNitroDir)NitroModules;
+        $(NitroNodeRoot)nitrogen\generated\shared\c++;
+        $(NitroNodeRoot)cpp;
+        $(NitroNodeRoot)cpp\core;
+        $(NitroNodeRoot)cpp\os;
+        $(NitroNodeRoot)cpp\net;
+        $(NitroNodeRoot)cpp\dgram;
+        $(NitroNodeRoot)cpp\dns;
+        $(NitroNodeRoot)cpp\fs;
+        $(NitroNodeRoot)cpp\tls;
+        $(NitroNodeRoot)cpp\timers;
+        $(NitroNodeRoot)cpp\zlib;
+        $(NitroNodeRoot)cpp\url;
+        $(NitroNodeRoot)cpp\crypto\argon2;
+        $(NitroNodeRoot)cpp\crypto\blake3;
+        $(NitroNodeRoot)cpp\crypto\certificate;
+        $(NitroNodeRoot)cpp\crypto\cipher;
+        $(NitroNodeRoot)cpp\crypto\dh;
+        $(NitroNodeRoot)cpp\crypto\dsa;
+        $(NitroNodeRoot)cpp\crypto\ec;
+        $(NitroNodeRoot)cpp\crypto\ecdh;
+        $(NitroNodeRoot)cpp\crypto\ed25519;
+        $(NitroNodeRoot)cpp\crypto\hash;
+        $(NitroNodeRoot)cpp\crypto\hkdf;
+        $(NitroNodeRoot)cpp\crypto\hmac;
+        $(NitroNodeRoot)cpp\crypto\kmac;
+        $(NitroNodeRoot)cpp\crypto\keys;
+        $(NitroNodeRoot)cpp\crypto\mldsa;
+        $(NitroNodeRoot)cpp\crypto\mlkem;
+        $(NitroNodeRoot)cpp\crypto\slhdsa;
+        $(NitroNodeRoot)cpp\crypto\pbkdf2;
+        $(NitroNodeRoot)cpp\crypto\prime;
+        $(NitroNodeRoot)cpp\crypto\random;
+        $(NitroNodeRoot)cpp\crypto\rsa;
+        $(NitroNodeRoot)cpp\crypto\sign;
+        $(NitroNodeRoot)cpp\crypto\scrypt;
+        $(NitroNodeRoot)cpp\crypto\turboshake;
+        $(NitroNodeRoot)cpp\crypto\utils;
+        $(NitroNodeRoot)cpp\crypto\x509;
+        $(NitroNodeRoot)deps\libuv\include;
+        $(NitroNodeRoot)deps\c-ares\include;
+        $(MSBuildThisFileDirectory)cares;
+        $(NitroNodeRoot)deps\tlsuv\include;
+        $(NitroNodeRoot)deps\zlib;
+        $(NitroNodeRoot)deps\brotli\c\include;
+        $(NitroNodeRoot)deps\zstd\lib;
+        $(NitroNodeRoot)deps\ada;
+        $(NitroNodeRoot)deps\blake3\c;
+        $(NitroNodeRoot)deps\fastpbkdf2;
+        $(NitroNodeRoot)deps\ncrypto\include;
+        $(NitroNodeRoot)deps\simdutf\include;
+        $(NitroNodeRoot)deps\simdutf\src;
+        $(NitroNodeOpenSSLDir)include;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>
+        shell32.lib;
+        user32.lib;
+        windowsapp.lib;
+        ws2_32.lib;
+        iphlpapi.lib;
+        userenv.lib;
+        dbghelp.lib;
+        ole32.lib;
+        advapi32.lib;
+        crypt32.lib;
+        ncrypt.lib;
+        bcrypt.lib;
+        $(NitroNodeOpenSSLDir)lib\libssl.lib;
+        $(NitroNodeOpenSSLDir)lib\libcrypto.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+      <SubSystem>Console</SubSystem>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+      <ModuleDefinitionFile>NitroNode.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <!-- BLAKE3: NEON on ARM64; no x86 SIMD (its assembly isn't built), the portable C there -->
+  <ItemDefinitionGroup Condition="'$(Platform)'!='ARM64'">
+    <ClCompile>
+      <PreprocessorDefinitions>BLAKE3_NO_SSE2;BLAKE3_NO_SSE41;BLAKE3_NO_AVX2;BLAKE3_NO_AVX512;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemGroup>
+    <ClInclude Include="NitroModulesTurboModule.h" />
+    <ClInclude Include="NitroNodeAutolinking.h" />
+    <ClInclude Include="NitroPlatform.h" />
+    <ClInclude Include="ReactPackageProvider.h">
+      <DependentUpon>ReactPackageProvider.idl</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <!-- The WinRT glue -->
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ReactPackageProvider.cpp">
+      <DependentUpon>ReactPackageProvider.idl</DependentUpon>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="NitroModulesTurboModule.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="NitroPlatform.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="NitroNodeAutolinking.g.cpp" />
+  </ItemGroup>
+  <!-- Our native code and Nitrogen's (Nitro's own is added by NitroNodePrepareNitro) -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)cpp\**\*.cpp" />
+    <ClCompile Include="$(NitroNodeRoot)nitrogen\generated\shared\c++\**\*.cpp" />
+  </ItemGroup>
+  <!-- libuv -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\libuv\src\*.c;$(NitroNodeRoot)deps\libuv\src\win\*.c">
+      <AdditionalIncludeDirectories>$(NitroNodeRoot)deps\libuv\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)libuv\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+  <!-- c-ares, configured by its config-win32.h (src/lib/ares_setup.h) and our cares/ares_build.h -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\c-ares\src\lib\**\*.c" Exclude="$(NitroNodeRoot)deps\c-ares\src\lib\thirdparty\**">
+      <AdditionalIncludeDirectories>$(NitroNodeRoot)deps\c-ares\src\lib;$(NitroNodeRoot)deps\c-ares\src\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>CARES_BUILDING_LIBRARY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)cares\%(RecursiveDir)</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+  <!-- tlsuv: only its TLS engine (OpenSSL), not its HTTP client -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\tlsuv\src\tls_engine.c;$(NitroNodeRoot)deps\tlsuv\src\alloc.c;$(NitroNodeRoot)deps\tlsuv\src\um_debug.c;$(NitroNodeRoot)deps\tlsuv\src\keychain.c;$(NitroNodeRoot)deps\tlsuv\src\p11.c;$(NitroNodeRoot)deps\tlsuv\src\win32\win32_keychain.c;$(NitroNodeRoot)deps\tlsuv\src\openssl\engine.c;$(NitroNodeRoot)deps\tlsuv\src\openssl\keys.c">
+      <AdditionalIncludeDirectories>$(NitroNodeRoot)deps\tlsuv\src;$(NitroNodeRoot)deps\tlsuv\src\pkcs11;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- engine.c: ncrypto has an engine.cpp -->
+      <ObjectFileName>$(IntDir)tlsuv\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+  <!-- zlib: gzip/deflate (iOS and Android use the system's) -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\zlib\*.c">
+      <ObjectFileName>$(IntDir)zlib\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+  <!-- Brotli and zstd, for zlib -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\brotli\c\common\*.c;$(NitroNodeRoot)deps\brotli\c\dec\*.c;$(NitroNodeRoot)deps\brotli\c\enc\*.c">
+      <ObjectFileName>$(IntDir)brotli\%(RecursiveDir)</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="$(NitroNodeRoot)deps\zstd\lib\common\*.c;$(NitroNodeRoot)deps\zstd\lib\compress\*.c;$(NitroNodeRoot)deps\zstd\lib\decompress\*.c">
+      <ObjectFileName>$(IntDir)zstd\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+  <!-- crypto: ncrypto, simdutf, BLAKE3 and fastpbkdf2; url: ada -->
+  <ItemGroup>
+    <ClCompile Include="$(NitroNodeRoot)deps\ncrypto\src\*.cpp" />
+    <ClCompile Include="$(NitroNodeRoot)deps\simdutf\src\simdutf.cpp" />
+    <ClCompile Include="$(NitroNodeRoot)deps\blake3\c\blake3.c;$(NitroNodeRoot)deps\blake3\c\blake3_dispatch.c;$(NitroNodeRoot)deps\blake3\c\blake3_portable.c" />
+    <ClCompile Include="$(NitroNodeRoot)deps\blake3\c\blake3_neon.c" Condition="'$(Platform)'=='ARM64'" />
+    <ClCompile Include="$(NitroNodeRoot)deps\fastpbkdf2\fastpbkdf2.c" />
+    <ClCompile Include="$(NitroNodeRoot)deps\ada\ada.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="ReactPackageProvider.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="NitroNode.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="NitroNode.def" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ReactNativeWindowsTargets">
+    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets" Condition="Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets')" />
+  </ImportGroup>
+  <Target Name="EnsureReactNativeWindowsTargets" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references targets in your node_modules\react-native-windows folder. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props'))" />
+    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets'))" />
+  </Target>
+  <!--
+    Nitro's C++ core, built into this DLL: react-native-nitro-modules has no
+    Windows project. Copied (and patched) by the script, then compiled from the
+    copy; see scripts/prepare-nitro-windows.js.
+  -->
+  <Target Name="NitroNodePrepareNitro" BeforeTargets="PrepareForBuild">
+    <Exec Command="node &quot;$(NitroNodeRoot)scripts\prepare-nitro-windows.js&quot; &quot;$(NitroNodeNitroDir)&quot;" />
+    <ItemGroup>
+      <ClCompile Include="$(NitroNodeNitroDir)NitroModules\*.cpp">
+        <ObjectFileName>$(IntDir)nitro\</ObjectFileName>
+      </ClCompile>
+    </ItemGroup>
+  </Target>
+  <Target Name="NitroNodeDownloadOpenSSL" BeforeTargets="PrepareForBuild" Condition="!Exists('$(NitroNodeOpenSSLRoot).sha256') Or '$([System.IO.File]::ReadAllText(`$(NitroNodeOpenSSLRoot).sha256`).Trim())' != '$(NitroNodeOpenSSLSha256)'">
+    <PropertyGroup>
+      <NitroNodeOpenSSLArchive>$(NitroNodeRoot)windows\NitroNodeOpenSSL-windows-$(NitroNodeOpenSSLVersion).zip</NitroNodeOpenSSLArchive>
+    </PropertyGroup>
+    <Error Condition="'$(NitroNodeOpenSSLSha256)' == '' And !Exists('$(NitroNodeOpenSSLDir)lib\libcrypto.lib')" Text="[NitroNode] No OpenSSL release is set (NitroNodeOpenSSLSha256): build it into windows\openssl with scripts\build-openssl-windows.ps1" />
+    <Message Condition="'$(NitroNodeOpenSSLSha256)' != ''" Importance="high" Text="[NitroNode] Downloading static OpenSSL $(NitroNodeOpenSSLVersion)..." />
+    <DownloadFile Condition="'$(NitroNodeOpenSSLSha256)' != ''" SourceUrl="https://github.com/gmanole01/react-native-nitro-node/releases/download/$(NitroNodeOpenSSLRelease)/NitroNodeOpenSSL-windows-$(NitroNodeOpenSSLVersion).zip" DestinationFolder="$(NitroNodeRoot)windows" Retries="3" />
+    <VerifyFileHash Condition="'$(NitroNodeOpenSSLSha256)' != ''" File="$(NitroNodeOpenSSLArchive)" Hash="$(NitroNodeOpenSSLSha256)" Algorithm="SHA256" />
+    <RemoveDir Condition="'$(NitroNodeOpenSSLSha256)' != ''" Directories="$(NitroNodeOpenSSLRoot)" />
+    <Unzip Condition="'$(NitroNodeOpenSSLSha256)' != ''" SourceFiles="$(NitroNodeOpenSSLArchive)" DestinationFolder="$(NitroNodeOpenSSLRoot)" />
+    <Delete Condition="'$(NitroNodeOpenSSLSha256)' != ''" Files="$(NitroNodeOpenSSLArchive)" />
+    <WriteLinesToFile Condition="'$(NitroNodeOpenSSLSha256)' != ''" File="$(NitroNodeOpenSSLRoot).sha256" Lines="$(NitroNodeOpenSSLSha256)" Overwrite="true" />
+  </Target>
+</Project>

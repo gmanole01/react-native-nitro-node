@@ -53,7 +53,7 @@ module.exports = {
     [
       '@semantic-release/git',
       {
-        assets: ['package.json', 'CHANGELOG.md', 'example/package.json'],
+        assets: ['package.json', 'CHANGELOG.md', 'apps/mobile/package.json', 'apps/windows/package.json'],
       },
     ],
   ],

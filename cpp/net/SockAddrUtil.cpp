@@ -1,6 +1,10 @@
 #include "SockAddrUtil.hpp"
 
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
 #include <netinet/in.h>
+#endif
 #include <string>
 
 #include "UVLoop.hpp"

@@ -1,28 +1,10 @@
-// 64-bit file offsets on 32-bit Android (armeabi-v7a, x86), where off_t is
-// otherwise 32 bits and positions past 2 GiB are cut off. iOS and 64-bit
-// Android always have a 64-bit off_t. Must come before any system header.
-#define _FILE_OFFSET_BITS 64
-
 #include "HybridFs.hpp"
 
-#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 
-#include <dirent.h>
-#include <fcntl.h>
-#include <ftw.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#if defined(__APPLE__)
-#include <sys/mount.h>
-#else
-#include <sys/vfs.h>
-#endif
-
-static_assert(sizeof(off_t) == 8, "file offsets must be 64-bit");
+#include <uv.h>
 
 namespace margelo::nitro::node {
 
@@ -32,15 +14,34 @@ namespace {
 // with EFBIG, which JS reports as Node's ERR_FS_FILE_TOO_LARGE.
 constexpr size_t kMaxReadFileSize = 0x7fffffff;
 
-// The value a numeric call returns: `result`, or the negated errno when the
-// call failed. On iOS and Android that is also the libuv status of the error.
-double statusOf(long result) {
-  return result < 0 ? static_cast<double>(-errno) : static_cast<double>(result);
+// The path separators: '/' everywhere, and '\' on Windows too.
+#ifdef _WIN32
+constexpr const char* kSeparators = "/\\";
+#else
+constexpr const char* kSeparators = "/";
+#endif
+
+// A synchronous uv_fs request: with no callback, libuv runs the call on the
+// calling thread and doesn't touch the loop, so no loop is passed. Node's
+// *Sync calls work the same way. Cleaned up when it goes out of scope.
+struct FsRequest : uv_fs_t {
+  FsRequest() : uv_fs_t() {}
+  ~FsRequest() {
+    uv_fs_req_cleanup(this);
+  }
+  FsRequest(const FsRequest&) = delete;
+  FsRequest& operator=(const FsRequest&) = delete;
+};
+
+// The value a numeric call returns: `result`, or the libuv status of the error
+// (the negated errno on iOS and Android).
+double statusOf(int64_t result) {
+  return static_cast<double>(result);
 }
 
 // Thrown by the calls that cannot return a status, with `status` being the
-// negated errno. JS finds the status in the message, see src/fs/fs.ts.
-[[noreturn]] void throwErrno(int status) {
+// libuv status. JS finds the status in the message, see src/fs/fs.ts.
+[[noreturn]] void throwStatus(int64_t status) {
   throw std::runtime_error("[errno " + std::to_string(status) + "]");
 }
 
@@ -61,43 +62,79 @@ uint8_t* rangeOf(const std::shared_ptr<ArrayBuffer>& buffer, double offset, doub
 std::vector<uint8_t> copyRange(const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length) {
   uint8_t* data = rangeOf(buffer, offset, length);
   if (data == nullptr) {
-    throwErrno(-EINVAL);
+    throwStatus(UV_EINVAL);
   }
   return std::vector<uint8_t>(data, data + static_cast<size_t>(length));
 }
 
-// pread(), or read() at the current offset when `position` is negative.
-ssize_t readAt(int fd, uint8_t* data, size_t length, double position) {
-  ssize_t r;
-  do {
-    r = position < 0 ? ::read(fd, data, length) : ::pread(fd, data, length, static_cast<off_t>(position));
-  } while (r < 0 && errno == EINTR);
+// A uv_buf_t over [data, data + length). Its length is 32 bits on Windows:
+// longer reads and writes are short ones, which callers already handle.
+uv_buf_t bufferOf(const uint8_t* data, size_t length) {
+  constexpr size_t kMaxLength = 0x7fffffff;
+  return uv_buf_init(const_cast<char*>(reinterpret_cast<const char*>(data)),
+                     static_cast<unsigned int>(length < kMaxLength ? length : kMaxLength));
+}
+
+// Reads at `position`, or at the current offset when it is negative. Returns
+// the bytes read, or the libuv status.
+int64_t readAt(uv_file fd, uint8_t* data, size_t length, double position) {
+  FsRequest req;
+  uv_buf_t buf = bufferOf(data, length);
+  return uv_fs_read(nullptr, &req, fd, &buf, 1, position < 0 ? -1 : static_cast<int64_t>(position), nullptr);
+}
+
+// Writes at `position`, or at the current offset when it is negative. Returns
+// the bytes written, or the libuv status.
+int64_t writeAt(uv_file fd, const uint8_t* data, size_t length, double position) {
+  FsRequest req;
+  uv_buf_t buf = bufferOf(data, length);
+  return uv_fs_write(nullptr, &req, fd, &buf, 1, position < 0 ? -1 : static_cast<int64_t>(position), nullptr);
+}
+
+int openFile(const std::string& path, int flags, int mode) {
+  FsRequest req;
+  return uv_fs_open(nullptr, &req, path.c_str(), flags, mode, nullptr);
+}
+
+int closeFile(uv_file fd) {
+  FsRequest req;
+  return uv_fs_close(nullptr, &req, fd, nullptr);
+}
+
+// stat(2), or lstat(2) with `noFollow`. Returns 0 or the libuv status.
+int statPath(const std::string& path, bool noFollow, uv_stat_t* out) {
+  FsRequest req;
+  int r = noFollow ? uv_fs_lstat(nullptr, &req, path.c_str(), nullptr) : uv_fs_stat(nullptr, &req, path.c_str(), nullptr);
+  if (r == 0) {
+    *out = req.statbuf;
+  }
   return r;
 }
 
-// pwrite(), or write() at the current offset when `position` is negative.
-ssize_t writeAt(int fd, const uint8_t* data, size_t length, double position) {
-  ssize_t r;
-  do {
-    r = position < 0 ? ::write(fd, data, length) : ::pwrite(fd, data, length, static_cast<off_t>(position));
-  } while (r < 0 && errno == EINTR);
-  return r;
+bool isDirectory(const uv_stat_t& st) {
+  return (st.st_mode & S_IFMT) == S_IFDIR;
 }
 
 // The whole content of the file at `path`. Reads until end of file rather than
 // trusting the size from stat, which is 0 for some special files.
 std::shared_ptr<ArrayBuffer> readWholeFile(const std::string& path) {
-  int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+  int fd = openFile(path, UV_FS_O_RDONLY, 0);
   if (fd < 0) {
-    throwErrno(-errno);
+    throwStatus(fd);
   }
 
-  struct stat st {};
-  if (::fstat(fd, &st) == 0 && static_cast<uint64_t>(st.st_size) > kMaxReadFileSize) {
-    ::close(fd);
-    throwErrno(-EFBIG);
+  uint64_t statSize = 0;
+  {
+    FsRequest req;
+    if (uv_fs_fstat(nullptr, &req, fd, nullptr) == 0) {
+      statSize = req.statbuf.st_size;
+    }
   }
-  size_t capacity = st.st_size > 0 ? static_cast<size_t>(st.st_size) + 1 : 64 * 1024;
+  if (statSize > kMaxReadFileSize) {
+    closeFile(fd);
+    throwStatus(UV_EFBIG);
+  }
+  size_t capacity = statSize > 0 ? static_cast<size_t>(statSize) + 1 : 64 * 1024;
   size_t size = 0;
   auto* data = static_cast<uint8_t*>(malloc(capacity));
 
@@ -106,8 +143,8 @@ std::shared_ptr<ArrayBuffer> readWholeFile(const std::string& path) {
       // special files report no size, so the limit is checked as they are read
       if (capacity > kMaxReadFileSize) {
         free(data);
-        ::close(fd);
-        throwErrno(-EFBIG);
+        closeFile(fd);
+        throwStatus(UV_EFBIG);
       }
       capacity *= 2;
       auto* bigger = static_cast<uint8_t*>(realloc(data, capacity));
@@ -118,22 +155,21 @@ std::shared_ptr<ArrayBuffer> readWholeFile(const std::string& path) {
       }
       data = bigger;
     }
-    ssize_t r = readAt(fd, data + size, capacity - size, -1);
+    int64_t r = readAt(fd, data + size, capacity - size, -1);
     if (r < 0) {
-      int err = errno;
       free(data);
-      ::close(fd);
-      throwErrno(-err);
+      closeFile(fd);
+      throwStatus(r);
     }
     if (r == 0) {
       break;
     }
     size += static_cast<size_t>(r);
   }
-  ::close(fd);
+  closeFile(fd);
 
   if (data == nullptr) {
-    throwErrno(-ENOMEM);
+    throwStatus(UV_ENOMEM);
   }
   if (size == 0) {
     free(data);
@@ -143,70 +179,118 @@ std::shared_ptr<ArrayBuffer> readWholeFile(const std::string& path) {
 }
 
 // Opens `path` with `flags` and `mode` and writes all of `data` to it.
-// Returns 0, or the negated errno.
-int writeWholeFile(const std::string& path, const uint8_t* data, size_t size, int flags, mode_t mode) {
-  int fd = ::open(path.c_str(), flags | O_CLOEXEC, mode);
+// Returns 0, or the libuv status.
+int writeWholeFile(const std::string& path, const uint8_t* data, size_t size, int flags, int mode) {
+  int fd = openFile(path, flags, mode);
   if (fd < 0) {
-    return -errno;
+    return fd;
   }
   size_t written = 0;
   while (written < size) {
-    ssize_t r = writeAt(fd, data + written, size - written, -1);
+    int64_t r = writeAt(fd, data + written, size - written, -1);
     if (r < 0) {
-      int err = errno;
-      ::close(fd);
-      return -err;
+      closeFile(fd);
+      return static_cast<int>(r);
     }
     written += static_cast<size_t>(r);
   }
-  if (::close(fd) < 0) {
-    return -errno;
-  }
-  return 0;
+  return closeFile(fd);
+}
+
+int makeDirectoryAt(const std::string& path, int mode) {
+  FsRequest req;
+  return uv_fs_mkdir(nullptr, &req, path.c_str(), mode, nullptr);
 }
 
 // mkdir() that succeeds when `path` already is a directory.
-int mkdirExisting(const char* path, mode_t mode) {
-  if (::mkdir(path, mode) == 0) {
-    return 0;
+int makeDirectoryOrExisting(const std::string& path, int mode) {
+  int r = makeDirectoryAt(path, mode);
+  if (r != UV_EEXIST) {
+    return r;
   }
-  if (errno != EEXIST) {
-    return -1;
+  uv_stat_t st;
+  int s = statPath(path, false, &st);
+  if (s != 0) {
+    return s;
   }
-  struct stat st {};
-  if (::stat(path, &st) != 0) {
-    return -1;
+  return isDirectory(st) ? 0 : UV_ENOTDIR;
+}
+
+// mkdir -p: as Node's MKDirpSync, the parents are created when the directory
+// can't be for lack of them.
+int makeDirectoryTree(const std::string& path, int mode) {
+  int r = makeDirectoryOrExisting(path, mode);
+  if (r != UV_ENOENT) {
+    return r;
   }
-  if (!S_ISDIR(st.st_mode)) {
-    errno = ENOTDIR;
-    return -1;
+  // The parent: `path` without its last component and the separators before it
+  size_t end = path.find_last_of(kSeparators);
+  if (end == std::string::npos) {
+    return r;
+  }
+  size_t parentEnd = path.find_last_not_of(kSeparators, end);
+  // `path` is in a root ("/a", "C:\a") that doesn't exist
+  if (parentEnd == std::string::npos || (parentEnd == 1 && path[1] == ':')) {
+    return r;
+  }
+  int p = makeDirectoryTree(path.substr(0, parentEnd + 1), mode);
+  if (p != 0) {
+    return p;
+  }
+  return makeDirectoryOrExisting(path, mode);
+}
+
+// The names in the directory at `path`, without '.' and '..', in libuv's
+// order (sorted, as Node's readdir), or the libuv status.
+int namesIn(const std::string& path, std::vector<std::string>* out) {
+  FsRequest req;
+  int r = uv_fs_scandir(nullptr, &req, path.c_str(), 0, nullptr);
+  if (r < 0) {
+    return r;
+  }
+  uv_dirent_t entry;
+  while (uv_fs_scandir_next(&req, &entry) != UV_EOF) {
+    out->emplace_back(entry.name);
   }
   return 0;
 }
 
-int removeEntry(const char* path, const struct stat* /* sb */, int /* typeflag */, struct FTW* /* ftwbuf */) {
-  return ::remove(path);
+// rm -r: depth first, so a directory is emptied before it is removed; symlinks
+// (and Windows junctions) are removed, not followed. Returns 0 or the libuv
+// status.
+int removeTree(const std::string& path) {
+  uv_stat_t st;
+  int r = statPath(path, true, &st);
+  if (r != 0) {
+    return r;
+  }
+  FsRequest req;
+  if (!isDirectory(st)) {
+    return uv_fs_unlink(nullptr, &req, path.c_str(), nullptr);
+  }
+
+  std::vector<std::string> names;
+  r = namesIn(path, &names);
+  if (r != 0) {
+    return r;
+  }
+  for (const std::string& name : names) {
+    r = removeTree(path + "/" + name);
+    if (r != 0) {
+      return r;
+    }
+  }
+  return uv_fs_rmdir(nullptr, &req, path.c_str(), nullptr);
 }
 
 // A time as milliseconds since the epoch, with the nanoseconds as a fraction.
-double toMs(const struct timespec& t) {
+double toMs(const uv_timespec_t& t) {
   return static_cast<double>(t.tv_sec) * 1e3 + static_cast<double>(t.tv_nsec) / 1e6;
 }
 
-FileStats toFileStats(const struct stat& st) {
-#if defined(__APPLE__)
-  const struct timespec& atime = st.st_atimespec;
-  const struct timespec& mtime = st.st_mtimespec;
-  const struct timespec& ctime = st.st_ctimespec;
-  const struct timespec& birthtime = st.st_birthtimespec;
-#else
-  const struct timespec& atime = st.st_atim;
-  const struct timespec& mtime = st.st_mtim;
-  const struct timespec& ctime = st.st_ctim;
-  // Linux's stat() has no creation time; libuv (and so Node, without statx)
-  // reports the change time instead.
-  const struct timespec& birthtime = st.st_ctim;
-#endif
+// libuv's birth time is the creation time on iOS and Windows, and on Android
+// where statx() has it; elsewhere libuv (and so Node) reports the change time.
+FileStats toFileStats(const uv_stat_t& st) {
   return FileStats(static_cast<double>(st.st_dev),
                    static_cast<double>(st.st_ino),
                    static_cast<double>(st.st_mode),
@@ -217,123 +301,99 @@ FileStats toFileStats(const struct stat& st) {
                    static_cast<double>(st.st_size),
                    static_cast<double>(st.st_blksize),
                    static_cast<double>(st.st_blocks),
-                   toMs(atime),
-                   toMs(mtime),
-                   toMs(ctime),
-                   toMs(birthtime));
+                   toMs(st.st_atim),
+                   toMs(st.st_mtim),
+                   toMs(st.st_ctim),
+                   toMs(st.st_birthtim));
 }
 
-// The names in the directory at `path`, without '.' and '..', or throws the
-// errno.
-std::vector<std::string> namesIn(const std::string& path) {
-  DIR* dir = ::opendir(path.c_str());
-  if (dir == nullptr) {
-    throwErrno(-errno);
+// stat(2), or lstat(2) with `noFollow`, of `path`, or throws its status.
+FileStats statOf(const std::string& path, bool noFollow) {
+  uv_stat_t st;
+  int r = statPath(path, noFollow, &st);
+  if (r != 0) {
+    throwStatus(r);
   }
+  return toFileStats(st);
+}
 
-  std::vector<std::string> names;
-  errno = 0;
-  while (struct dirent* entry = ::readdir(dir)) {
-    if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-      names.emplace_back(entry->d_name);
-    }
+// fstat(2) of `fd`, or throws its status.
+FileStats fstatOf(double fd) {
+  FsRequest req;
+  int r = uv_fs_fstat(nullptr, &req, static_cast<uv_file>(fd), nullptr);
+  if (r != 0) {
+    throwStatus(r);
   }
-  // readdir() returns null both at the end and on an error
-  int err = errno;
-  ::closedir(dir);
-  if (err != 0) {
-    throwErrno(-err);
+  return toFileStats(req.statbuf);
+}
+
+// statfs(2) of `path`, or throws its status.
+StatFs statfsOf(const std::string& path) {
+  FsRequest req;
+  int r = uv_fs_statfs(nullptr, &req, path.c_str(), nullptr);
+  if (r != 0) {
+    throwStatus(r);
+  }
+  const auto* st = static_cast<const uv_statfs_t*>(req.ptr);
+  return StatFs(static_cast<double>(st->f_type),
+                static_cast<double>(st->f_bsize),
+                static_cast<double>(st->f_blocks),
+                static_cast<double>(st->f_bfree),
+                static_cast<double>(st->f_bavail),
+                static_cast<double>(st->f_files),
+                static_cast<double>(st->f_ffree));
+}
+
+std::vector<std::string> readDirectory(const std::string& path) {
+  std::vector<std::string> names;
+  int r = namesIn(path, &names);
+  if (r != 0) {
+    throwStatus(r);
   }
   return names;
 }
 
-// statfs(2) of `path`, or throws its errno.
-StatFs statfsOf(const std::string& path) {
-  struct statfs st {};
-  if (::statfs(path.c_str(), &st) != 0) {
-    throwErrno(-errno);
-  }
-  return StatFs(static_cast<double>(st.f_type),
-                static_cast<double>(st.f_bsize),
-                static_cast<double>(st.f_blocks),
-                static_cast<double>(st.f_bfree),
-                static_cast<double>(st.f_bavail),
-                static_cast<double>(st.f_files),
-                static_cast<double>(st.f_ffree));
-}
-
-// stat(2), or lstat(2) with `noFollow`, of `path`, or throws its errno.
-FileStats statOf(const std::string& path, bool noFollow) {
-  struct stat st {};
-  int r = noFollow ? ::lstat(path.c_str(), &st) : ::stat(path.c_str(), &st);
-  if (r != 0) {
-    throwErrno(-errno);
-  }
-  return toFileStats(st);
-}
-
-// fstat(2) of `fd`, or throws its errno.
-FileStats fstatOf(double fd) {
-  struct stat st {};
-  if (::fstat(static_cast<int>(fd), &st) != 0) {
-    throwErrno(-errno);
-  }
-  return toFileStats(st);
-}
-
 // The calls behind open() ... access() and their *Sync twins: each returns
-// the result, or the negated errno.
+// the result, or the libuv status.
 
 double openPath(const std::string& path, double flags, double mode) {
-  return statusOf(::open(path.c_str(), static_cast<int>(flags) | O_CLOEXEC, static_cast<mode_t>(mode)));
+  return statusOf(openFile(path, static_cast<int>(flags), static_cast<int>(mode)));
 }
 
 double closeFd(double fd) {
-  return statusOf(::close(static_cast<int>(fd)));
+  return statusOf(closeFile(static_cast<uv_file>(fd)));
 }
 
 double truncateFd(double fd, double length) {
-  return statusOf(::ftruncate(static_cast<int>(fd), static_cast<off_t>(length)));
+  FsRequest req;
+  return statusOf(uv_fs_ftruncate(nullptr, &req, static_cast<uv_file>(fd), static_cast<int64_t>(length), nullptr));
 }
 
 double makeDirectory(const std::string& path, double mode) {
-  return statusOf(::mkdir(path.c_str(), static_cast<mode_t>(mode)));
+  return statusOf(makeDirectoryAt(path, static_cast<int>(mode)));
 }
 
-// mkdir -p.
 double makeDirectories(const std::string& path, double mode) {
-  std::string partial = path;
-  // create every parent, then the directory itself
-  for (size_t i = 1; i < partial.size(); i++) {
-    if (partial[i] != '/') {
-      continue;
-    }
-    partial[i] = '\0';
-    if (mkdirExisting(partial.c_str(), static_cast<mode_t>(mode)) != 0) {
-      return -errno;
-    }
-    partial[i] = '/';
-  }
-  return statusOf(mkdirExisting(path.c_str(), static_cast<mode_t>(mode)));
+  return statusOf(makeDirectoryTree(path, static_cast<int>(mode)));
 }
 
 double removeFile(const std::string& path) {
-  return statusOf(::unlink(path.c_str()));
+  FsRequest req;
+  return statusOf(uv_fs_unlink(nullptr, &req, path.c_str(), nullptr));
 }
 
 double removeDirectory(const std::string& path) {
-  return statusOf(::rmdir(path.c_str()));
+  FsRequest req;
+  return statusOf(uv_fs_rmdir(nullptr, &req, path.c_str(), nullptr));
 }
 
-// rm -r.
-double removeTree(const std::string& path) {
-  // depth first, so a directory is emptied before it is removed; symlinks are
-  // removed, not followed
-  return statusOf(::nftw(path.c_str(), removeEntry, 64, FTW_DEPTH | FTW_PHYS));
+double removeRecursive(const std::string& path) {
+  return statusOf(removeTree(path));
 }
 
 double checkAccess(const std::string& path, double mode) {
-  return statusOf(::access(path.c_str(), static_cast<int>(mode)));
+  FsRequest req;
+  return statusOf(uv_fs_access(nullptr, &req, path.c_str(), static_cast<int>(mode), nullptr));
 }
 
 } // namespace
@@ -369,14 +429,13 @@ std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridFs::read(double fd,
     }
     auto* data = static_cast<uint8_t*>(malloc(static_cast<size_t>(length)));
     if (data == nullptr) {
-      throwErrno(-ENOMEM);
+      throwStatus(UV_ENOMEM);
     }
-    ssize_t r = readAt(static_cast<int>(fd), data, static_cast<size_t>(length), position);
+    int64_t r = readAt(static_cast<uv_file>(fd), data, static_cast<size_t>(length), position);
     if (r <= 0) {
-      int err = errno;
       free(data);
       if (r < 0) {
-        throwErrno(-err);
+        throwStatus(r);
       }
       return ArrayBuffer::allocate(0);
     }
@@ -388,27 +447,27 @@ std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridFs::read(double fd,
 double HybridFs::readSync(double fd, const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length, double position) {
   uint8_t* data = rangeOf(buffer, offset, length);
   if (data == nullptr) {
-    return -EINVAL;
+    return UV_EINVAL;
   }
-  return statusOf(readAt(static_cast<int>(fd), data, static_cast<size_t>(length), position));
+  return statusOf(readAt(static_cast<uv_file>(fd), data, static_cast<size_t>(length), position));
 }
 
 std::shared_ptr<Promise<double>> HybridFs::write(double fd, const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length, double position) {
   if (rangeOf(buffer, offset, length) == nullptr) {
-    return Promise<double>::resolved(static_cast<double>(-EINVAL));
+    return Promise<double>::resolved(static_cast<double>(UV_EINVAL));
   }
   auto data = copyRange(buffer, offset, length);
   return Promise<double>::async([fd, data = std::move(data), position]() -> double {
-    return statusOf(writeAt(static_cast<int>(fd), data.data(), data.size(), position));
+    return statusOf(writeAt(static_cast<uv_file>(fd), data.data(), data.size(), position));
   });
 }
 
 double HybridFs::writeSync(double fd, const std::shared_ptr<ArrayBuffer>& buffer, double offset, double length, double position) {
   uint8_t* data = rangeOf(buffer, offset, length);
   if (data == nullptr) {
-    return -EINVAL;
+    return UV_EINVAL;
   }
-  return statusOf(writeAt(static_cast<int>(fd), data, static_cast<size_t>(length), position));
+  return statusOf(writeAt(static_cast<uv_file>(fd), data, static_cast<size_t>(length), position));
 }
 
 std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridFs::readFile(const std::string& path) {
@@ -422,9 +481,9 @@ std::shared_ptr<ArrayBuffer> HybridFs::readFileSync(const std::string& path) {
 std::shared_ptr<Promise<void>> HybridFs::writeFile(const std::string& path, const std::shared_ptr<ArrayBuffer>& data, double offset, double length, double flags, double mode) {
   auto bytes = copyRange(data, offset, length);
   return Promise<void>::async([path, bytes = std::move(bytes), flags, mode]() {
-    int r = writeWholeFile(path, bytes.data(), bytes.size(), static_cast<int>(flags), static_cast<mode_t>(mode));
+    int r = writeWholeFile(path, bytes.data(), bytes.size(), static_cast<int>(flags), static_cast<int>(mode));
     if (r < 0) {
-      throwErrno(r);
+      throwStatus(r);
     }
   });
 }
@@ -432,9 +491,9 @@ std::shared_ptr<Promise<void>> HybridFs::writeFile(const std::string& path, cons
 double HybridFs::writeFileSync(const std::string& path, const std::shared_ptr<ArrayBuffer>& data, double offset, double length, double flags, double mode) {
   uint8_t* bytes = rangeOf(data, offset, length);
   if (bytes == nullptr) {
-    return -EINVAL;
+    return UV_EINVAL;
   }
-  return writeWholeFile(path, bytes, static_cast<size_t>(length), static_cast<int>(flags), static_cast<mode_t>(mode));
+  return writeWholeFile(path, bytes, static_cast<size_t>(length), static_cast<int>(flags), static_cast<int>(mode));
 }
 
 std::shared_ptr<Promise<double>> HybridFs::mkdir(const std::string& path, double mode) {
@@ -470,11 +529,11 @@ double HybridFs::rmdirSync(const std::string& path) {
 }
 
 std::shared_ptr<Promise<double>> HybridFs::rmRecursive(const std::string& path) {
-  return Promise<double>::async([path]() { return removeTree(path); });
+  return Promise<double>::async([path]() { return removeRecursive(path); });
 }
 
 double HybridFs::rmRecursiveSync(const std::string& path) {
-  return removeTree(path);
+  return removeRecursive(path);
 }
 
 std::shared_ptr<Promise<double>> HybridFs::access(const std::string& path, double mode) {
@@ -486,11 +545,11 @@ double HybridFs::accessSync(const std::string& path, double mode) {
 }
 
 std::shared_ptr<Promise<std::vector<std::string>>> HybridFs::readdir(const std::string& path) {
-  return Promise<std::vector<std::string>>::async([path]() { return namesIn(path); });
+  return Promise<std::vector<std::string>>::async([path]() { return readDirectory(path); });
 }
 
 std::vector<std::string> HybridFs::readdirSync(const std::string& path) {
-  return namesIn(path);
+  return readDirectory(path);
 }
 
 std::shared_ptr<Promise<StatFs>> HybridFs::statfs(const std::string& path) {

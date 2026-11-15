@@ -50,7 +50,7 @@ export interface FileStats {
   atimeMs: number;
   mtimeMs: number;
   ctimeMs: number;
-  /** The creation time on iOS. Android doesn't record one: ctimeMs, as in libuv. */
+  /** The creation time (libuv's birth time); ctimeMs on Android when statx() has none, as in libuv. */
   birthtimeMs: number;
 }
 

@@ -157,6 +157,13 @@ On macOS the library runs with [react-native-macos](https://github.com/microsoft
 
 Without them those calls fail with `EPERM`. Files outside the app's container need the user's consent (an open panel, or the `com.apple.security.files.*` entitlements), as for any sandboxed app.
 
+### Windows (experimental)
+
+> [!WARNING]
+> Windows support through [react-native-windows](https://github.com/microsoft/react-native-windows) (New Architecture, 0.84) is in progress and hasn't been built or tested yet.
+
+`windows/NitroNode` is a react-native-windows library project that autolinking picks up. `react-native-nitro-modules` has no Windows project, so this DLL builds Nitro's C++ core in and provides the `NitroModules` TurboModule its JavaScript installs Nitro through: another Nitro library on Windows would provide a second one. react-native-windows hands a library's DLL its JSI runtime through an ABI layer that can't wrap native memory in an `ArrayBuffer`, so on Windows every `ArrayBuffer` a native call returns (file contents, crypto output, …) is copied into one JavaScript allocates. OpenSSL comes as this library's prebuilt static build (`scripts/build-openssl-windows.ps1`).
+
 ### Requirements
 
 | | Minimum |
@@ -496,12 +503,12 @@ dns.lookup('nope.invalid', (err) => {
 |---|:---:|---|
 | `readFile` / `writeFile` / `appendFile` (+ `Sync`) | ✅ | `encoding`, `flag`, `mode`; strings or any `ArrayBufferView`. Like Node, `readFile` refuses files over 2 GiB (`ERR_FS_FILE_TOO_LARGE`) |
 | `open` / `close` / `read` / `write` / `ftruncate` (+ `Sync`) | ✅ | Every Node string flag (`'r'`, `'w+'`, `'ax'`, …); `position: null` uses the file offset. 64-bit positions on every platform and ABI, so files past 2 GiB work |
-| `mkdir` / `readdir` / `rmdir` / `rm` / `unlink` (+ `Sync`) | ✅ | `mkdir({ recursive })`, `rm({ recursive, force })` |
+| `mkdir` / `readdir` / `rmdir` / `rm` / `unlink` (+ `Sync`) | ✅ | `mkdir({ recursive })`, `rm({ recursive, force })`; `readdir` sorts names, as Node's (libuv's `scandir`) |
 | `access` / `exists` / `existsSync` | ✅ | |
-| `stat` / `lstat` / `fstat` (+ `Sync`) | ✅ | `Stats` with every field, the `*Ms` times with their nanoseconds and as `Date`s, and `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `throwIfNoEntry`. `birthtime` is the creation time on iOS and macOS; Android doesn't record one, so it's `ctime`, as in Node without `statx` |
+| `stat` / `lstat` / `fstat` (+ `Sync`) | ✅ | `Stats` with every field, the `*Ms` times with their nanoseconds and as `Date`s, and `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `throwIfNoEntry`. `birthtime` is the creation time on iOS, macOS and Windows, and on Android where the kernel's `statx` has one; otherwise `ctime`, as in Node on Linux |
 | `stat({ bigint: true })` / `BigIntStats` | ❌ | Planned; throws a `TypeError` for now |
 | `statfs` (+ `Sync`) | ✅ | |
-| `constants` | ✅ | The platform's real values; constants a platform lacks are left out |
+| `constants` | ✅ | The platform's real values; constants a platform lacks are left out. On Windows, Node's Windows set: the `O_*` flags libuv supports, `S_IRUSR`/`S_IWUSR` and the file types |
 | `readdir({ withFileTypes })` / `Dirent` | ❌ | Planned |
 | `fs.promises` | ❌ | Planned |
 | `createReadStream` / `createWriteStream` | ❌ | Planned |
@@ -737,7 +744,7 @@ flowchart TB
 - **Nitro Modules** generate the C++ ↔ JS bindings, so every call goes straight through JSI with no serialization over a bridge.
 - **c-ares** performs DNS resolution asynchronously. On Android it's initialized with the system's DNS servers from `ConnectivityManager`.
 - **Timers** are `uv_timer_t` handles on the loop thread, and immediates a `uv_check_t` that runs after each I/O phase, as in Node. JavaScript keeps the timers' callbacks and asks the loop to wake it.
-- **fs** calls go straight to POSIX. Every call has two native versions: the `*Sync` forms run on the JS thread, and the callback forms run on Nitro's thread pool, so they never block JavaScript.
+- **fs** calls are libuv's `uv_fs_*`, as in Node, run synchronously: POSIX on iOS and Android, Win32 on Windows. Every call has two native versions: the `*Sync` forms run on the JS thread, and the callback forms run on Nitro's thread pool, so they never block JavaScript.
 - **UDP** sockets are `uv_udp_t` handles on the loop thread, under Node's own `lib/dgram.js`, which drives them through the same API as Node's `UDPWrap`. A received datagram goes to JavaScript as the buffer libuv read it into, without a copy; a send copies its buffers into one datagram, since the JavaScript ones can't be read off the JS thread.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **crypto** is [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto)'s implementation: C++ HybridObjects over OpenSSL (the same OpenSSL 3.6 as TLS) and Node's [ncrypto](https://github.com/nodejs/ncrypto), with [simdutf](https://github.com/simdutf/simdutf) for base64 and hex. Most calls run on the JS thread; the slow ones, such as key generation and key derivation, also have asynchronous forms that run on Nitro's thread pool.
@@ -772,6 +779,7 @@ Know the limits:
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
 
 ### Later
+- [ ] Windows, through react-native-windows (in progress)
 - [ ] More DNS record types: `resolveMx`, `resolveTxt`, `resolveSrv`, `resolveCname`, `resolveNs`, `reverse`
 - [ ] `http2`: client and server (only stubs for now)
 - [ ] Unix domain sockets for `net`
@@ -802,14 +810,16 @@ Have a use case that's missing? [Open an issue](https://github.com/gmanole01/rea
 
 ## 🧪 Example app
 
-The [`example/`](./example) app runs the library's test suites (`net`, `dgram`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, `assert`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
+The [`apps/mobile`](./apps/mobile) app runs the library's test suites (`net`, `dgram`, `dns`, `http`, `tls`, `fs`, `os`, `timers` and `process`, `crypto`, `zlib`, `util`, `url`, `assert`, memory and GC) on a device or simulator. Some dependencies in `deps/` are git submodules, so clone with `--recursive`, or fetch them in an existing clone:
 
 ```sh
 git submodule update --init
 yarn
-cd example
+cd apps/mobile
 yarn ios      # or: yarn android
 ```
+
+[`apps/windows`](./apps/windows) runs the same app and suites on Windows (experimental, see [Windows](#windows-experimental)): `yarn windows` there, on Windows with Visual Studio 2026 and react-native-windows' [requirements](https://microsoft.github.io/react-native-windows/docs/rnw-dependencies).
 
 ## 🤝 Contributing
 
