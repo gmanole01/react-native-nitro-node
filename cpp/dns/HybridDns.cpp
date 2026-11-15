@@ -66,6 +66,15 @@ static ares_channel_t* createChannel() {
     throw runtime_error("ENOTINITIALIZED c-ares was built without thread safety");
   }
 
+#ifdef _WIN32
+  // c-ares refuses channels on Windows until it's initialized (Android does
+  // it in NitroNodeDnsInit; iOS doesn't need it). Once: this runs once.
+  int initStatus = ares_library_init(ARES_LIB_INIT_ALL);
+  if (initStatus != ARES_SUCCESS) {
+    std::rethrow_exception(dnsError(initStatus));
+  }
+#endif
+
   ares_channel_t* channel = nullptr;
   struct ares_options options;
   int optmask = 0;

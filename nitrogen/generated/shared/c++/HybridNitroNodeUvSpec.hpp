@@ -137,6 +137,8 @@ namespace margelo::nitro::node {
       // Methods
       virtual std::string uv_strerror(double error) = 0;
       virtual std::vector<InterfaceAddress> uv_interface_addresses() = 0;
+      virtual std::string uv_cwd() = 0;
+      virtual double uv_chdir(const std::string& directory) = 0;
 
     protected:
       // Hybrid Setup

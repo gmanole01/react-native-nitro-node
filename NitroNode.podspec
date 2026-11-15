@@ -32,8 +32,8 @@ Pod::Spec.new do |s|
   # is a new release, openssl-apple-<version>-<n>; the checksum, kept next to
   # the extracted files, says when the one in ios/openssl is outdated.
   openssl_version = "3.6.2"
-  openssl_release = "openssl-apple-#{openssl_version}-1"
-  openssl_sha256 = "15909986ba62e80419984519ab3159718b5e9645496e6da91b1638f837b8a17f"
+  openssl_release = "openssl-apple-#{openssl_version}-2"
+  openssl_sha256 = "0c84d370849bb24b60dc49fb1861f2a5ddcc9a92d14556df13b64ff3e2c6f61f"
   openssl_dir = File.join(__dir__, "ios", "openssl")
   openssl_prefix_header = File.join(openssl_dir, "nitronode_openssl_prefix.h")
   openssl_stamp = File.join(openssl_dir, ".sha256")

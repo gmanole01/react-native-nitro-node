@@ -1,6 +1,11 @@
 import * as fs from 'react-native-nitro-node/fs';
 import * as os from 'react-native-nitro-node/os';
+import { Platform } from 'react-native';
 import { type Step } from './testUtils';
+
+// As Node's: C:\... on Windows, /... elsewhere
+const ABSOLUTE = Platform.OS === 'windows' ? /^[A-Za-z]:\\/ : /^\//;
+const SEPARATOR = Platform.OS === 'windows' ? '\\' : '/';
 
 /** os: the app's folders and the network interfaces. */
 export async function runOsTests(step: Step) {
@@ -8,7 +13,7 @@ export async function runOsTests(step: Step) {
     const tmp = os.tmpdir();
     const home = os.homedir();
     for (const [name, dir] of [['tmpdir', tmp], ['homedir', home]]) {
-      if (!dir.startsWith('/')) {
+      if (!ABSOLUTE.test(dir)) {
         throw new Error(`${name}() is not absolute: ${dir}`);
       }
       fs.accessSync(dir);
@@ -16,7 +21,8 @@ export async function runOsTests(step: Step) {
     // only tmpdir() has to be writable: on an iOS device the sandbox root
     // (homedir) is not, only folders such as Documents in it
     fs.accessSync(tmp, fs.constants.W_OK);
-    if (tmp.length > 1 && tmp.endsWith('/')) {
+    // the root (/ or C:\) is the only one that ends with it
+    if (!/^(\/|[A-Za-z]:\\)$/.test(tmp) && tmp.endsWith(SEPARATOR)) {
       throw new Error(`tmpdir() ends with a slash: ${tmp}`);
     }
     return `tmpdir ${tmp}, homedir ${home}`;

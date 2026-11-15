@@ -27,6 +27,8 @@ export interface ErrnoException extends Error {
   /** The error name, e.g. 'ECONNREFUSED' or 'ENOTFOUND'. */
   code?: string;
   path?: string;
+  /** The second path of a two-path operation, e.g. chdir's destination. */
+  dest?: string;
   /** The operation that failed, e.g. 'connect' or 'getaddrinfo'. */
   syscall?: string;
 }

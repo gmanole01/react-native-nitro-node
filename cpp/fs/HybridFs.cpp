@@ -97,6 +97,14 @@ int openFile(const std::string& path, int flags, int mode) {
 }
 
 int closeFile(uv_file fd) {
+#ifdef _WIN32
+  // libuv's close is the CRT's _close(), which on a closed fd raises the CRT's
+  // invalid-parameter assertion (a blocking dialog in debug builds). Its
+  // uv_get_osfhandle() checks the fd with that assertion off.
+  if (fd > 2 && uv_get_osfhandle(fd) == INVALID_HANDLE_VALUE) {
+    return UV_EBADF;
+  }
+#endif
   FsRequest req;
   return uv_fs_close(nullptr, &req, fd, nullptr);
 }

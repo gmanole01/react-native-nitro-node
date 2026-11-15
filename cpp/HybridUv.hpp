@@ -161,6 +161,31 @@ public:
     uv_free_interface_addresses(interfaces, count);
     return result;
   }
+
+  // As Node's Cwd (src/node_process_methods.cc), with a larger buffer when the
+  // path doesn't fit.
+  std::string uv_cwd() override {
+    char buffer[4096];
+    size_t size = sizeof(buffer);
+    int err = ::uv_cwd(buffer, &size);
+    if (err == UV_ENOBUFS) {
+      // `size` is now the length it needs, with the terminating NUL
+      std::string path(size, '\0');
+      err = ::uv_cwd(path.data(), &size);
+      if (err == 0) {
+        path.resize(size);
+        return path;
+      }
+    }
+    if (err != 0) {
+      throw std::runtime_error("[errno " + std::to_string(err) + "]");
+    }
+    return std::string(buffer, size);
+  }
+
+  double uv_chdir(const std::string& directory) override {
+    return ::uv_chdir(directory.c_str());
+  }
 };
 
 } // namespace margelo::nitro::node

@@ -160,9 +160,9 @@ Without them those calls fail with `EPERM`. Files outside the app's container ne
 ### Windows (experimental)
 
 > [!WARNING]
-> Windows support through [react-native-windows](https://github.com/microsoft/react-native-windows) (New Architecture, 0.84) is in progress and hasn't been built or tested yet.
+> Windows support through [react-native-windows](https://github.com/microsoft/react-native-windows) (New Architecture, 0.84) is experimental: it builds for x64, ARM64 and Win32, and the example's suites pass on ARM64 (Debug and Release). As Node there, `path` is `path.win32`, and `fs` and `url`'s `fileURLToPath()` / `pathToFileURL()` follow Windows' rules for `file:` URLs (`file:///C:/a` is `C:\a`, a host makes a UNC path).
 
-`windows/NitroNode` is a react-native-windows library project that autolinking picks up. `react-native-nitro-modules` has no Windows project, so this DLL builds Nitro's C++ core in and provides the `NitroModules` TurboModule its JavaScript installs Nitro through: another Nitro library on Windows would provide a second one. react-native-windows hands a library's DLL its JSI runtime through an ABI layer that can't wrap native memory in an `ArrayBuffer`, so on Windows every `ArrayBuffer` a native call returns (file contents, crypto output, …) is copied into one JavaScript allocates. OpenSSL comes as this library's prebuilt static build (`scripts/build-openssl-windows.ps1`).
+`windows/NitroNode` is a react-native-windows library project that autolinking picks up. `react-native-nitro-modules` has no Windows project, so this DLL builds Nitro's C++ core in and provides the `NitroModules` TurboModule its JavaScript installs Nitro through: another Nitro library on Windows would provide a second one. react-native-windows hands a library's DLL its JSI runtime through an ABI layer that can't wrap native memory in an `ArrayBuffer`, so on Windows every `ArrayBuffer` a native call returns (file contents, crypto output, …) is copied into one JavaScript allocates. Its `CallInvoker` doesn't catch what a JS callback throws either, so this library catches it and reports it to `ErrorUtils` (the red box), as React Native does on iOS and Android, rather than letting the app abort. OpenSSL comes as this library's prebuilt static build (`scripts/build-openssl-windows.ps1`), which the first build downloads from this repo's [`openssl-windows-3.6.2-2`](https://github.com/gmanole01/react-native-nitro-node/releases/tag/openssl-windows-3.6.2-2) release (about 60 MB, checked against its SHA-256).
 
 ### Requirements
 
@@ -540,7 +540,7 @@ dns.lookup('nope.invalid', (err) => {
 | `addMembership()` / `dropMembership()`, `addSourceSpecificMembership()` / `dropSourceSpecificMembership()` | ✅ | iOS needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`) to send or receive multicast and broadcast; Android, a `WifiManager.MulticastLock` to receive multicast |
 | `get/setRecvBufferSize()`, `get/setSendBufferSize()`, `getSendQueueSize()`, `getSendQueueCount()` | ✅ | Android (Linux) reports double the size set, as Node there |
 | Events | ✅ | `listening`, `message`, `connect`, `error`, `close` |
-| `reusePort` | ⚠️ | On Android, as Node on Linux: sockets share the port and its datagrams. On iOS and macOS `bind` fails with `ENOTSUP`, as Node on macOS: libuv has no `SO_REUSEPORT` for Apple systems |
+| `reusePort` | ⚠️ | On Android, as Node on Linux: sockets share the port and its datagrams. On iOS, macOS and Windows `bind` fails with `ENOTSUP`, as Node there: libuv has no `SO_REUSEPORT` for Apple systems or Windows |
 | `bind({ fd })`, cluster workers | ❌ | No file descriptors to open: `ERR_INVALID_FD_TYPE` |
 | `receiveBlockList` / `sendBlockList` | ⚠️ | There is no `net.BlockList` yet: any object with Node's `check(address, family)` works |
 | `Symbol.asyncDispose` | ⚠️ | Only where the engine has `Symbol.asyncDispose` |
@@ -592,7 +592,7 @@ dns.lookup('nope.invalid', (err) => {
 
 | API | Status | Notes |
 |---|:---:|---|
-| `setTimeout()` / `clearTimeout()` | ✅ | On the libuv loop. Delays below 1 ms or above 2³¹−1 ms become 1 ms, as in Node |
+| `setTimeout()` / `clearTimeout()` | ✅ | On the libuv loop. Delays below 1 ms or above 2³¹−1 ms become 1 ms, as in Node. On Windows they fire at the system clock's resolution, ~16 ms, as Node's there: `setInterval(fn, 10)` ticks about every 16 ms |
 | `setInterval()` / `clearInterval()` | ✅ | The next tick is timed from the end of the callback, as in Node |
 | `setImmediate()` / `clearImmediate()` | ✅ | After the loop's I/O phase, as in Node |
 | `Timeout` | ✅ | `refresh()`, `close()`, `hasRef()`, `Symbol.toPrimitive` (so `clearTimeout(+timer)` works) and `Symbol.dispose` where the runtime has it |
@@ -648,7 +648,7 @@ Node 22's `lib/url.js` and `lib/internal/url.js`, ported, on [ada](https://githu
 | `URLSearchParams` | ✅ | Every method, `size`, iteration, and the two-way link with its URL |
 | `URL.createObjectURL()` / `URL.revokeObjectURL()` | ✅ | React Native's, for its own `Blob`s, so the URLs work with `Image`, `fetch`, … |
 | `url.parse()` / `url.format()` / `url.resolve()` / `url.resolveObject()` / `Url` | ✅ | The legacy API, as Node's, `parseQueryString` and `slashesDenoteHost` included |
-| `fileURLToPath()` / `pathToFileURL()` / `fileURLToPathBuffer()` | ✅ | POSIX paths, as on Linux and macOS Node. The `windows` option isn't supported |
+| `fileURLToPath()` / `pathToFileURL()` / `fileURLToPathBuffer()` | ✅ | As Node: Windows paths on Windows (`C:\...`, UNC), POSIX paths elsewhere, and the `windows` option picks either |
 | `domainToASCII()` / `domainToUnicode()` / `urlToHttpOptions()` | ✅ | |
 
 The global `URL` and `URLSearchParams` stay React Native's: import these where you need Node's.
@@ -679,11 +679,11 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | `stream` | ✅ | `Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `Stream`, `pipeline`, `finished` and `promises`, from the [`readable-stream`](https://www.npmjs.com/package/readable-stream) package |
 | `stream/promises` | ✅ | `pipeline()` and `finished()` returning promises, with `signal`: the same object as `stream.promises`, as in Node |
 | `buffer.Buffer` | ✅ | Re-exports the [`buffer`](https://www.npmjs.com/package/buffer) package |
-| `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android. On macOS, `$TMPDIR` and `$HOME`: the app's container for a sandboxed app, the user's own folders otherwise |
+| `os.tmpdir()` / `os.homedir()` | ✅ | The app's own folders: the tmp directory and sandbox on iOS, the cache and data directories on Android. On macOS, `$TMPDIR` and `$HOME`: the app's container for a sandboxed app, the user's own folders otherwise. On Windows, as Node there: `C:\...` paths from `%TEMP%` and the user profile |
 | `os.EOL` | ✅ | |
 | `os.networkInterfaces()` | ✅ | As Node's, from libuv: addresses by interface, with `cidr` and `scopeid`. The system hides MAC addresses from apps: on iOS most are `02:00:00:00:00:00`, on Android 11+ `00:00:00:00:00:00` |
 | Rest of `os` (`platform`, `cpus`, …) | ❌ | |
-| `path` | ✅ | The full POSIX implementation: `join`, `resolve`, `normalize`, `relative`, `dirname`, `basename`, `extname`, `isAbsolute`, `sep`, `delimiter`, `posix` |
+| `path` | ✅ | Node 22's `lib/path.js`: `path.posix` and `path.win32`, with `join`, `resolve`, `normalize`, `relative`, `dirname`, `basename`, `extname`, `isAbsolute`, `parse`, `format`, `toNamespacedPath`, `matchesGlob` (on the minimatch Node 22 bundles, 10.2.4), `sep`, `delimiter`. As in Node, `path` itself is `path.win32` on Windows and `path.posix` elsewhere, and `resolve()` starts relative paths from `process.cwd()` |
 
 ### `process`
 
@@ -692,9 +692,10 @@ Node 22's own code for the parts below, ported (`lib/internal/util/inspect.js`, 
 | `process.nextTick()` | ✅ | On the library's `setImmediate`: before timers, but after promise callbacks, pending I/O and earlier immediates, unlike Node's |
 | `env`, `argv`, `version`, `versions` | ✅ | Empty: `{}`, `[]`, `''` and `{}` |
 | `title`, `browser` | ✅ | `'browser'` and `true`, as in the `process` package |
-| `cwd()` / `umask()` | ✅ | Always `'/'` and `0` |
+| `cwd()` / `chdir()` | ✅ | The process's real current directory (libuv's `uv_cwd` / `uv_chdir`), with Node's errors. fs's relative paths and `path.resolve()` start from it, as in Node. iOS, Android and macOS start an app in `/`, so the library moves it to the app's data directory, `os.homedir()` (`/data/user/0/<package>` on Android, the sandbox on iOS); a directory set otherwise is kept. On Windows it's the one Windows gives the app (`C:\Windows\System32` for a packaged app started from the Start menu) |
+| `umask()` | ✅ | Always `0` |
 | `on()`, `once()`, `emit()` and the other listener methods | ✅ | Do nothing; `listeners()` returns `[]` |
-| `chdir()` / `binding()` | ❌ | Throw |
+| `binding()` | ❌ | Throws |
 | `exit()`, `pid`, `platform`, `memoryUsage()`, `hrtime()`, … | ❌ | |
 
 ### `zlib`
@@ -748,7 +749,7 @@ flowchart TB
 - **UDP** sockets are `uv_udp_t` handles on the loop thread, under Node's own `lib/dgram.js`, which drives them through the same API as Node's `UDPWrap`. A received datagram goes to JavaScript as the buffer libuv read it into, without a copy; a send copies its buffers into one datagram, since the JavaScript ones can't be read off the JS thread.
 - **TLS** is native: a TLS socket wraps the TCP socket on the loop thread, the way Node's `TLSWrap` wraps a `TCPWrap`. Encrypted bytes never leave C++: [OpenSSL](https://www.openssl.org) 3.6, driven through [tlsuv](https://github.com/openziti/tlsuv)'s engine, decrypts them, and JavaScript gets plaintext through the same callbacks as a plain socket. That's why `TLSSocket` is a `net.Socket` in JavaScript.
 - **crypto** is [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto)'s implementation: C++ HybridObjects over OpenSSL (the same OpenSSL 3.6 as TLS) and Node's [ncrypto](https://github.com/nodejs/ncrypto), with [simdutf](https://github.com/simdutf/simdutf) for base64 and hex. Most calls run on the JS thread; the slow ones, such as key generation and key derivation, also have asynchronous forms that run on Nitro's thread pool.
-- **Certificates** are checked against the operating system's trust store. On iOS and macOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself.
+- **Certificates** are checked against the operating system's trust store. On iOS and macOS that's Apple's own verification (`SecTrust`, with the TLS server policy and the host name); on Android, OpenSSL checks the chain against the system's CA certificates in `/etc/security/cacerts` and checks the host name itself; on Windows, its chain engine (`CertGetCertificateChain` with the TLS server policy and the host name), which fetches the roots the local store doesn't have yet, as browsers do.
 
 ## 🔐 Security notes
 
@@ -779,7 +780,7 @@ Know the limits:
 - [ ] `fs` streams: `createReadStream` and `createWriteStream`
 
 ### Later
-- [ ] Windows, through react-native-windows (in progress)
+- [ ] Windows, through react-native-windows (experimental: builds and runs, suites being verified)
 - [ ] More DNS record types: `resolveMx`, `resolveTxt`, `resolveSrv`, `resolveCname`, `resolveNs`, `reverse`
 - [ ] `http2`: client and server (only stubs for now)
 - [ ] Unix domain sockets for `net`
@@ -819,7 +820,7 @@ cd apps/mobile
 yarn ios      # or: yarn android
 ```
 
-[`apps/windows`](./apps/windows) runs the same app and suites on Windows (experimental, see [Windows](#windows-experimental)): `yarn windows` there, on Windows with Visual Studio 2026 and react-native-windows' [requirements](https://microsoft.github.io/react-native-windows/docs/rnw-dependencies).
+[`apps/windows`](./apps/windows) runs the same app and suites on Windows (experimental, see [Windows](#windows-experimental)): `yarn windows` there (`yarn windows --arch ARM64` on an ARM64 PC, which can't deploy x64 packages), on Windows with Visual Studio 2026 and react-native-windows' [requirements](https://microsoft.github.io/react-native-windows/docs/rnw-dependencies). Metro must be this app's: another project's Metro on port 8081 serves the wrong bundle.
 
 ## 🤝 Contributing
 

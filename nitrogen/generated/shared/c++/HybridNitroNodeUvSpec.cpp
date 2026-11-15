@@ -101,6 +101,8 @@ namespace margelo::nitro::node {
       prototype.registerHybridGetter("UV_ENOEXEC", &HybridNitroNodeUvSpec::getUV_ENOEXEC);
       prototype.registerHybridMethod("uv_strerror", &HybridNitroNodeUvSpec::uv_strerror);
       prototype.registerHybridMethod("uv_interface_addresses", &HybridNitroNodeUvSpec::uv_interface_addresses);
+      prototype.registerHybridMethod("uv_cwd", &HybridNitroNodeUvSpec::uv_cwd);
+      prototype.registerHybridMethod("uv_chdir", &HybridNitroNodeUvSpec::uv_chdir);
     });
   }
 

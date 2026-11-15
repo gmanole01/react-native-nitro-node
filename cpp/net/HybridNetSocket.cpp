@@ -189,10 +189,16 @@ void HybridNetSocket::connect(const std::string& host, double _port) {
       return;
     }
 
+#ifdef _WIN32
+    // Not until it's connected: TCP_NODELAY set while ConnectEx is in flight
+    // leaves the socket's peer address empty (getpeername gives 0.0.0.0).
+    connecting_ = true;
+#else
     // The handle has its file descriptor now, so the options asked for before
     // connect() can be applied.
     applyNoDelay();
     applyKeepAlive();
+#endif
   });
 }
 
@@ -216,8 +222,8 @@ void HybridNetSocket::setKeepAlive(bool enable, double initialDelaySeconds) {
 void HybridNetSocket::applyNoDelay() {
   NITRO_NODE_ASSERT_ON_LOOP_THREAD();
 
-  if (uvSocket_ == nullptr || uv_is_closing((uv_handle_t*) uvSocket_)) {
-    // not connected yet: connect() applies it
+  if (uvSocket_ == nullptr || uv_is_closing((uv_handle_t*) uvSocket_) || connecting_) {
+    // not connected yet: connect() (onConnected on Windows) applies it
     return;
   }
 
@@ -230,8 +236,8 @@ void HybridNetSocket::applyNoDelay() {
 void HybridNetSocket::applyKeepAlive() {
   NITRO_NODE_ASSERT_ON_LOOP_THREAD();
 
-  if (uvSocket_ == nullptr || uv_is_closing((uv_handle_t*) uvSocket_)) {
-    // not connected yet: connect() applies it
+  if (uvSocket_ == nullptr || uv_is_closing((uv_handle_t*) uvSocket_) || connecting_) {
+    // not connected yet: connect() (onConnected on Windows) applies it
     return;
   }
 
@@ -408,6 +414,16 @@ void HybridNetSocket::onConnected(uv_connect_t* req, int status) {
   }
 
   free(req);
+
+#ifdef _WIN32
+  if (socket != nullptr) {
+    socket->connecting_ = false;
+    if (status >= 0) {
+      socket->applyNoDelay();
+      socket->applyKeepAlive();
+    }
+  }
+#endif
 
   if (socket != nullptr) {
     socket->emitConnect(status);

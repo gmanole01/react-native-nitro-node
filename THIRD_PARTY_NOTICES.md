@@ -7,12 +7,16 @@ licenses.
 | Software | Where | License |
 |---|---|---|
 | [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto) | `src/crypto/`, `cpp/crypto/` (ported) | MIT |
-| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), `src/util/inspect.ts`, `src/util/comparisons.ts` and `promisify()` (from `lib/internal/util/`), `src/url/` (from `lib/url.js`, `lib/internal/url.js` and `src/node_url.cc`) and `src/querystring/` (from `lib/querystring.js`), ported | MIT |
+| [Node.js](https://github.com/nodejs/node) | parts of `src/crypto/` and `cpp/crypto/`, by way of react-native-quick-crypto; `src/zlib/` (from `lib/zlib.js`) and `cpp/zlib/` (from `src/node_zlib.cc`), `src/util/inspect.ts`, `src/util/comparisons.ts` and `promisify()` (from `lib/internal/util/`), `src/url/` (from `lib/url.js`, `lib/internal/url.js` and `src/node_url.cc`) and `src/querystring/` (from `lib/querystring.js`), `src/path/` (from `lib/path.js`) and the Windows `file:` URL conversion in `src/fs/fs.ts` (from `getPathFromURLWin32` in `lib/internal/url.js`), ported | MIT |
+| [minimatch](https://github.com/isaacs/minimatch) | `src/path/minimatch.ts`: 10.2.4, as Node 22 bundles it (`deps/minimatch/index.js`) | Blue Oak Model License 1.0.0 |
+| [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.4, [balanced-match](https://github.com/juliangruber/balanced-match) 4.0.4 | inside `src/path/minimatch.ts`, as Node 22 bundles them with minimatch | MIT |
 | [ncrypto](https://github.com/nodejs/ncrypto) | `deps/ncrypto` | MIT |
 | [simdutf](https://github.com/simdutf/simdutf) | `deps/simdutf` | MIT (or Apache 2.0, at your option) |
 | [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | `deps/blake3` | CC0 1.0 (or Apache 2.0, or Apache 2.0 with LLVM exception) |
 | [fastpbkdf2](https://github.com/ctz/fastpbkdf2) | `deps/fastpbkdf2` | CC0 1.0 |
 | base64 (René Nyffenegger, Kevin Heifner) | `cpp/crypto/utils/base64.h` | zlib-style |
+| [react-native-nitro-modules](https://github.com/mrousavy/nitro) | Windows: its C++ core, copied from the app's copy and patched by `scripts/prepare-nitro-windows.js`, is built into `NitroNode.dll` | MIT |
+| [react-native-windows](https://github.com/microsoft/react-native-windows) | `windows/` and `apps/windows/` start from its `cpp-lib` and `cpp-app` templates | MIT |
 | [libuv](https://github.com/libuv/libuv) | `deps/libuv` | MIT |
 | [c-ares](https://github.com/c-ares/c-ares) | `deps/c-ares`, `ios/Frameworks/c-ares.xcframework` | MIT |
 | [tlsuv](https://github.com/openziti/tlsuv) | `deps/tlsuv` | MIT |
@@ -110,6 +114,122 @@ IN THE SOFTWARE.
 
 The full Node.js license, with the licenses of its own dependencies:
 https://github.com/nodejs/node/blob/main/LICENSE
+```
+
+## minimatch
+
+```
+# Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules. The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor's
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+<https://blueoakcouncil.org/license/1.0.0>.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice. If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+**_As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim._**
+```
+
+## brace-expansion
+
+```
+MIT License
+
+Copyright Julian Gruber <julian@juliangruber.com>
+
+TypeScript port Copyright Isaac Z. Schlueter <i@izs.me>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## balanced-match
+
+```
+(MIT)
+
+Original code Copyright Julian Gruber <julian@juliangruber.com>
+
+Port to TypeScript Copyright Isaac Z. Schlueter <i@izs.me>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## ncrypto
@@ -226,6 +346,61 @@ Used under CC0 1.0: the authors dedicated it to the public domain. See
  * Modified to be header only.
  * Templated for std::string, std::string_view, std::vector<char> and other char containers.
  */
+```
+
+## react-native-nitro-modules
+
+```
+MIT License
+
+Copyright (c) 2024 Marc Rousavy
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## react-native-windows
+
+```
+The MIT License (MIT)
+
+Copyright (c) Microsoft Corporation and contributors. All rights reserved.
+
+Portions derived from React Native:
+
+Copyright (c) 2015-present, Facebook, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## libuv

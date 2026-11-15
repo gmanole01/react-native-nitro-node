@@ -18,6 +18,7 @@ import { runCryptoTests } from './cryptoTests';
 import { runZlibTests } from './zlibTests';
 import { runUtilTests } from './utilTests';
 import { runUrlTests } from './urlTests';
+import { runPathTests } from './pathTests';
 import { runAssertTests } from './assertTests';
 import { runDgramTests } from './dgramTests';
 import {
@@ -47,6 +48,7 @@ async function runTests(report: (result: StepResult) => void) {
   await runZlibTests(step);
   await runUtilTests(step);
   await runUrlTests(step);
+  await runPathTests(step);
   await runAssertTests(step);
 
   const summary =
@@ -227,6 +229,9 @@ function App(): React.JSX.Element {
         <Pressable
           style={[styles.button, running && styles.buttonDisabled]}
           disabled={running}
+          accessibilityRole="button"
+          // UI Automation's Invoke on Windows: runs the suites without a click
+          onAccessibilityTap={run}
           onPress={run}
         >
           <Text style={styles.buttonText}>Run tests</Text>
@@ -234,6 +239,8 @@ function App(): React.JSX.Element {
         <Pressable
           style={[styles.button, running && styles.buttonDisabled]}
           disabled={running}
+          accessibilityRole="button"
+          onAccessibilityTap={runMemory}
           onPress={runMemory}
         >
           <Text style={styles.buttonText}>Run memory test</Text>

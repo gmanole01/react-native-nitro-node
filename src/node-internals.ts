@@ -3,6 +3,7 @@
  * (internal/errors, internal/validators, internal/util), with the same
  * messages.
  */
+import { Platform } from 'react-native';
 
 // internal/errors: kTypes and classRegExp, for ERR_INVALID_ARG_TYPE
 const kTypes = ['string', 'function', 'number', 'object', 'Function', 'Object', 'boolean', 'bigint', 'symbol'];
@@ -212,6 +213,24 @@ export function validateString(value: unknown, name: string): asserts value is s
   if (typeof value !== 'string') {
     throw ERR_INVALID_ARG_TYPE(name, 'string', value);
   }
+}
+
+// internal/util: process.platform 'win32' and 'darwin' are React Native's
+// 'windows' and 'macos'
+export const isWindows = Platform.OS === 'windows';
+export const isMacOS = Platform.OS === 'macos';
+
+/** internal/util's getLazy(): the initializer runs on the first call only. */
+export function getLazy<T>(initializer: () => T): () => T {
+  let value: T;
+  let initialized = false;
+  return function () {
+    if (initialized === false) {
+      value = initializer();
+      initialized = true;
+    }
+    return value;
+  };
 }
 
 export const kValidateObjectNone = 0;

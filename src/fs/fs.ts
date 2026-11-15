@@ -1,4 +1,5 @@
 import { Buffer } from 'buffer';
+import { Platform } from 'react-native';
 import { NitroFs, NitroFsConstants } from '../native';
 import type { FileStats, StatFs } from '../native';
 import { fsError } from '../errors';
@@ -142,6 +143,9 @@ function fileURLToPath(href: string): string {
     throw new TypeError(`The URL must be of scheme file: ${href}`);
   }
   const [, host, pathname] = match;
+  if (Platform.OS === 'windows') {
+    return fileURLToPathWin32(href, host!.toLowerCase() === 'localhost' ? '' : host!, pathname!);
+  }
   if (host !== '' && host!.toLowerCase() !== 'localhost') {
     throw new TypeError(`File URL host must be "localhost" or empty: ${href}`);
   }
@@ -151,6 +155,27 @@ function fileURLToPath(href: string): string {
     );
   }
   return decodeURIComponent(pathname!);
+}
+
+/**
+ * As Node's getPathFromURLWin32(): file:///C:/a/b is C:\a\b, and a host makes
+ * a UNC path, file://server/share/x is \\server\share\x.
+ */
+function fileURLToPathWin32(href: string, host: string, pathname: string): string {
+  if (/%(2f|5c)/i.test(pathname)) {
+    throw new TypeError(
+      `File URL path must not include encoded \\ or / characters: ${href}`,
+    );
+  }
+  const path = decodeURIComponent(pathname.replace(/\//g, '\\'));
+  if (host !== '') {
+    return `\\\\${host}${path}`;
+  }
+  // a local path needs a drive letter: \C:\a
+  if (!/^\\[a-z]:/i.test(path)) {
+    throw new TypeError(`File URL path must be absolute: ${href}`);
+  }
+  return path.slice(1);
 }
 
 function toPath(path: PathLike): string {

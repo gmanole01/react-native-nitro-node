@@ -3,6 +3,9 @@
 // rather than setTimeout: it comes sooner, and before timers and the
 // immediates set after it, which is closer to Node's nextTick.
 import { setImmediate, clearImmediate } from '../timers';
+import { NitroUv } from '../native';
+import { fsError } from '../errors';
+import { validateString } from '../node-internals';
 
 let queue: Item[] = [];
 let draining = false;
@@ -98,12 +101,36 @@ export function binding(name: string): never {
   throw new Error('process.binding is not supported');
 }
 
-export function cwd() {
-  return '/';
+/**
+ * The process's current directory, as Node's. On iOS, Android and macOS it
+ * starts as the app's data directory (src/native/index.ts moves there).
+ */
+export function cwd(): string {
+  try {
+    return NitroUv.uv_cwd();
+  } catch (e) {
+    const match = /\[errno (-?\d+)\]/.exec(e instanceof Error ? e.message : String(e));
+    if (match === null) {
+      throw e;
+    }
+    throw fsError('uv_cwd', Number(match[1]));
+  }
 }
 
-export function chdir(dir: string): never {
-  throw new Error('process.chdir is not supported');
+/**
+ * Changes the process's current directory, as Node's: for fs's relative
+ * paths, path.resolve() and cwd().
+ */
+export function chdir(directory: string): void {
+  validateString(directory, 'directory');
+  const status = NitroUv.uv_chdir(directory);
+  if (status < 0) {
+    // As Node's: "ENOENT: no such file or directory, chdir '/cwd' -> 'dir'"
+    const error = fsError('chdir', status, cwd());
+    error.message += ` -> '${directory}'`;
+    error.dest = directory;
+    throw error;
+  }
 }
 
 export function umask() {

@@ -2,6 +2,7 @@ import * as fs from 'react-native-nitro-node/fs';
 import fsDefault, { readFileSync } from 'react-native-nitro-node/fs';
 import * as os from 'react-native-nitro-node/os';
 import { Buffer } from 'buffer';
+import { Platform } from 'react-native';
 import {
   SkipError,
   type Step,
@@ -235,10 +236,18 @@ export async function runFsTests(step: Step) {
   });
 
   await step('fs accepts file:// strings and URL objects', async () => {
-    fs.writeFileSync(`file://${root}/url%20file.txt`, 'via url');
+    // file:///C:/... on Windows (C:\... paths), file:///... elsewhere
+    const base = Platform.OS === 'windows' ? `file:///${root.replace(/\\/g, '/')}` : `file://${root}`;
+    fs.writeFileSync(`${base}/url%20file.txt`, 'via url');
     expectEqual('file:// string', fs.readFileSync(`${root}/url file.txt`, 'utf8'), 'via url');
     // React Native's own URL class reports '/' as the pathname of any file: URL
-    expectEqual('URL object', fs.readFileSync(new URL(`file://${root}/url%20file.txt`), 'utf8'), 'via url');
+    expectEqual('URL object', fs.readFileSync(new URL(`${base}/url%20file.txt`), 'utf8'), 'via url');
+    if (Platform.OS === 'windows') {
+      // as Node on Windows: localhost is no host, a drive letter is required
+      expectEqual('file://localhost/C:/', fs.readFileSync(`${base.replace('file://', 'file://localhost')}/url%20file.txt`, 'utf8'), 'via url');
+      expectThrow('no drive letter', 'TypeError', () => fs.readFileSync('file:///no-drive.txt'));
+      expectThrow('encoded backslash', 'TypeError', () => fs.readFileSync(`${base}/a%5Cb.txt`));
+    }
     expectThrow('http URL', 'TypeError', () => fs.readFileSync(new URL('https://example.com/a')));
   });
 

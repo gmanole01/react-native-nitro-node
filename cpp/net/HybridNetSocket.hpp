@@ -98,6 +98,8 @@ private:
   bool connectCalled_ = false;
 
   // Socket options. Only touched on the UV loop thread.
+  // Windows only: the connect is in flight, so the options wait for onConnected
+  bool connecting_ = false;
   bool noDelay_ = false;
   bool keepAlive_ = false;
   unsigned int keepAliveDelay_ = kDefaultKeepAliveDelay;

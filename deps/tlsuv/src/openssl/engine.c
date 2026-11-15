@@ -119,6 +119,7 @@ static X509_LOOKUP_METHOD * old_hash_lookup(void);
 
 #if _WIN32
 static X509_STORE *load_system_certs();
+static int win32_ca_verify(int pre_verify, X509_STORE_CTX *st);
 #endif
 
 static tls_context openssl_context_api = {
@@ -343,6 +344,7 @@ static X509_LOOKUP_METHOD * old_hash_lookup(void) {
     return method;
 }
 
+
 #if __APPLE__
 // react-native-nitro-node: checks the server's name, which the original did
 // not. OpenSSL has no trust store on Apple platforms, so its verdict on the
@@ -426,6 +428,8 @@ static int set_ca_bundle(tls_context *tls, const char *ca, size_t ca_len) {
             X509_STORE *sys_ca = load_system_certs();
             SSL_CTX_set0_verify_cert_store(ctx, sys_ca);
         }
+        // react-native-nitro-node: the chain engine decides (win32_ca_verify)
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, win32_ca_verify);
 #elif __APPLE__
         // Apple deprecated all access to system CA roots store on macOS and iOS(was never available).
         // use native Apple trust verification
@@ -1161,6 +1165,91 @@ static X509_STORE *load_system_certs() {
     CertCloseStore(hCertStore, 0);
 
     return store;
+}
+
+// react-native-nitro-node: Windows' trust store is its chain engine, not the
+// ROOT store's contents: that store holds a few roots, and the engine fetches
+// the others (Automatic Root Certificates Update) as it builds a chain. So
+// OpenSSL's verdict on the chain means little and CryptoAPI decides, with the
+// TLS server policy for the servername, as apple_ca_verify does with SecTrust.
+// OpenSSL's own name check is kept.
+static int win32_ca_verify(int pre_verify, X509_STORE_CTX *st) {
+    if (!pre_verify) {
+        switch (X509_STORE_CTX_get_error(st)) {
+            case X509_V_ERR_HOSTNAME_MISMATCH:
+            case X509_V_ERR_IP_ADDRESS_MISMATCH:
+            case X509_V_ERR_EMAIL_MISMATCH:
+                return 0;
+            default:
+                break;
+        }
+    }
+
+    X509 *leaf = X509_STORE_CTX_get0_cert(st);
+    if (leaf == NULL) {
+        return 0;
+    }
+
+    // The certificates the server sent, for the engine to find the
+    // intermediates in
+    HCERTSTORE sent = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
+    if (sent == NULL) {
+        return 0;
+    }
+    STACK_OF(X509) *untrusted = X509_STORE_CTX_get0_untrusted(st);
+    for (int i = 0; i < sk_X509_num(untrusted); i++) {
+        uint8_t *der = NULL;
+        int der_len = i2d_X509(sk_X509_value(untrusted, i), &der);
+        if (der_len > 0) {
+            CertAddEncodedCertificateToStore(sent, X509_ASN_ENCODING, der, der_len, CERT_STORE_ADD_USE_EXISTING, NULL);
+        }
+        OPENSSL_free(der);
+    }
+
+    int result = 0;
+    uint8_t *leaf_der = NULL;
+    int leaf_len = i2d_X509(leaf, &leaf_der);
+    PCCERT_CONTEXT leaf_ctx = leaf_len > 0
+            ? CertCreateCertificateContext(X509_ASN_ENCODING, leaf_der, leaf_len)
+            : NULL;
+    OPENSSL_free(leaf_der);
+
+    // The name given to SSL_set1_host (the servername), if any
+    const char *host = X509_VERIFY_PARAM_get0_host(X509_STORE_CTX_get0_param(st), 0);
+    WCHAR *whost = NULL;
+    if (host != NULL) {
+        int n = MultiByteToWideChar(CP_UTF8, 0, host, -1, NULL, 0);
+        whost = n > 0 ? calloc(n, sizeof(WCHAR)) : NULL;
+        if (whost != NULL) {
+            MultiByteToWideChar(CP_UTF8, 0, host, -1, whost, n);
+        }
+    }
+
+    PCCERT_CHAIN_CONTEXT chain = NULL;
+    if (leaf_ctx != NULL) {
+        LPSTR usages[] = { szOID_PKIX_KP_SERVER_AUTH, szOID_SERVER_GATED_CRYPTO, szOID_SGC_NETSCAPE };
+        CERT_CHAIN_PARA para = { sizeof(para) };
+        para.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
+        para.RequestedUsage.Usage.cUsageIdentifier = sizeof(usages) / sizeof(usages[0]);
+        para.RequestedUsage.Usage.rgpszUsageIdentifier = usages;
+
+        if (CertGetCertificateChain(NULL, leaf_ctx, NULL, sent, &para, 0, NULL, &chain)) {
+            SSL_EXTRA_CERT_CHAIN_POLICY_PARA ssl_para = { { sizeof(ssl_para) } };
+            ssl_para.dwAuthType = AUTHTYPE_SERVER;
+            ssl_para.pwszServerName = whost;
+            CERT_CHAIN_POLICY_PARA policy_para = { sizeof(policy_para) };
+            policy_para.pvExtraPolicyPara = &ssl_para;
+            CERT_CHAIN_POLICY_STATUS status = { sizeof(status) };
+            result = CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, chain, &policy_para, &status) &&
+                     status.dwError == 0;
+            CertFreeCertificateChain(chain);
+        }
+        CertFreeCertificateContext(leaf_ctx);
+    }
+
+    free(whost);
+    CertCloseStore(sent, 0);
+    return result;
 }
 #endif
 

@@ -87,6 +87,9 @@ foreach ($slice in $Slices) {
   Remove-Item -Recurse -Force (Join-Path $prefix "bin"), (Join-Path $prefix "ssl"), (Join-Path $prefix "lib/pkgconfig"), (Join-Path $prefix "lib/cmake"), (Join-Path $prefix "lib/engines-3"), (Join-Path $prefix "lib/ossl-modules") -ErrorAction SilentlyContinue
 }
 
+# Apache 2.0 (section 4a): the license goes with every copy of the binaries
+Copy-Item (Join-Path $Src "LICENSE.txt") $Dist
+
 $zip = Join-Path $Work "$LibName-$Version.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $Dist "*") -DestinationPath $zip
@@ -98,5 +101,8 @@ if ($Install) {
   $openssl = Join-Path $Root "windows/openssl"
   Remove-Item -Recurse -Force $openssl -ErrorAction SilentlyContinue
   Expand-Archive -Path $zip -DestinationPath $openssl
+  # As NitroNode.vcxproj's download does: once NitroNodeOpenSSLSha256 is this
+  # build's, the build uses these files instead of downloading them again
+  Set-Content -Path (Join-Path $openssl ".sha256") -Value $sha -NoNewline
   Write-Host "==> Extracted into $openssl"
 }

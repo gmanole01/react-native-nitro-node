@@ -17,6 +17,8 @@
   <PropertyGroup Label="ReactNativeWindowsProps">
     <ReactNativeWindowsDir Condition="'$(ReactNativeWindowsDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\react-native-windows\package.json'))\node_modules\react-native-windows\</ReactNativeWindowsDir>
     <RunAutolinkCheck>false</RunAutolinkCheck>
+    <!-- No React Native codegen specs: our modules are Nitro's -->
+    <RunCodegenWindows>false</RunCodegenWindows>
   </PropertyGroup>
   <PropertyGroup Label="NitroNode">
     <!-- The package's root, where cpp/, deps/ and nitrogen/ are -->
@@ -31,8 +33,8 @@
       windows/openssl is outdated.
     -->
     <NitroNodeOpenSSLVersion>3.6.2</NitroNodeOpenSSLVersion>
-    <NitroNodeOpenSSLRelease>openssl-windows-$(NitroNodeOpenSSLVersion)-1</NitroNodeOpenSSLRelease>
-    <NitroNodeOpenSSLSha256></NitroNodeOpenSSLSha256>
+    <NitroNodeOpenSSLRelease>openssl-windows-$(NitroNodeOpenSSLVersion)-2</NitroNodeOpenSSLRelease>
+    <NitroNodeOpenSSLSha256>bf0484214f992dec7c901bb83552186f74c1baeff733d56910587742539ca3d1</NitroNodeOpenSSLSha256>
     <NitroNodeOpenSSLRoot>$(NitroNodeRoot)windows\openssl\</NitroNodeOpenSSLRoot>
     <NitroNodeOpenSSLDir>$(NitroNodeOpenSSLRoot)$(Platform)\</NitroNodeOpenSSLDir>
   </PropertyGroup>
@@ -334,10 +336,12 @@
     copy; see scripts/prepare-nitro-windows.js.
   -->
   <Target Name="NitroNodePrepareNitro" BeforeTargets="PrepareForBuild">
-    <Exec Command="node &quot;$(NitroNodeRoot)scripts\prepare-nitro-windows.js&quot; &quot;$(NitroNodeNitroDir)&quot;" />
+    <Exec Command="node &quot;$(NitroNodeRoot)scripts\prepare-nitro-windows.js&quot; &quot;$(NitroNodeNitroDir.TrimEnd('\'))&quot;" />
     <ItemGroup>
       <ClCompile Include="$(NitroNodeNitroDir)NitroModules\*.cpp">
         <ObjectFileName>$(IntDir)nitro\</ObjectFileName>
+        <!-- Standard headers Nitro gets transitively from libc++, not from MSVC's STL -->
+        <ForcedIncludeFiles>stdexcept;unordered_map;string;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       </ClCompile>
     </ItemGroup>
   </Target>

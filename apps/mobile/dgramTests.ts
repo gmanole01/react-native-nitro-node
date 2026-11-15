@@ -227,11 +227,11 @@ export async function runDgramTests(step: Step) {
       a.once('error', resolve);
     });
 
-    if (Platform.OS === 'ios' || Platform.OS === 'macos') {
-      // libuv has no SO_REUSEPORT for Apple systems
+    if (Platform.OS === 'ios' || Platform.OS === 'macos' || Platform.OS === 'windows') {
+      // libuv has no SO_REUSEPORT for Apple systems, nor for Windows
       expectEqual('error', [err?.code, err?.message], ['ENOTSUP', 'bind ENOTSUP 127.0.0.1']);
       a.close();
-      return 'ENOTSUP, as Node on macOS';
+      return `ENOTSUP, as Node on ${Platform.OS === 'windows' ? 'Windows' : 'macOS'}`;
     }
 
     if (err) {

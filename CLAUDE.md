@@ -6,7 +6,7 @@ Node.js core modules (`fs`, `net`, `dgram`, `tls`, `dns` (and `dns/promises`), `
 Goal: packages written for Node work unchanged in a React Native app, and keep
 working while the app is in the background. Platforms: iOS, Android,
 macOS through react-native-macos (the same pod as iOS), and Windows through
-react-native-windows (in progress, not built yet). Author: George Manole.
+react-native-windows (experimental: builds, the example runs on ARM64). Author: George Manole.
 
 README.md is the user-facing documentation (usage, the compatibility tables,
 How it works, Roadmap). Read it for what is implemented; keep it up to date
@@ -72,16 +72,37 @@ when adding or changing an API.
   `scripts/prepare-nitro-windows.js` (run by MSBuild) copies that core flat
   into `windows/NitroNode/obj/nitro/NitroModules` and patches its
   `ArrayBuffer` → JS conversion: RNW gives library DLLs a `JsiAbiRuntime`,
-  whose `createArrayBuffer(MutableBuffer)` crashes, so JS gets a copy. The
+  whose `createArrayBuffer(MutableBuffer)` crashes, so JS gets a copy. Nitro's
+  sources get `/FI` of the standard headers libc++ gives them transitively
+  and MSVC's STL doesn't (fix there, not by patching them). The
   DLL provides the `NitroModules` TurboModule (`NitroModulesTurboModule`,
-  `install()`), Nitro's ThreadUtils/Logger for Windows (`NitroPlatform.cpp`),
+  `install()`, whose dispatcher wraps RNW's `CallInvoker` in one that catches
+  JS errors and calls `ErrorUtils.reportFatalError`: RNW's doesn't, and an
+  error thrown by a JS callback otherwise aborts the app with no report),
+  Nitro's ThreadUtils/Logger for Windows (`NitroPlatform.cpp`),
   and registers our HybridObjects from `NitroNodeAutolinking.g.cpp`, generated
   from `nitro.json` by `scripts/generate-windows-autolinking.js` (`npm run
   codegen`; nitrogen has no Windows target). OpenSSL: our static build,
   `scripts/build-openssl-windows.ps1` (/MD, no renaming: the DLL exports only
   its WinRT entry points), downloaded by the vcxproj from an
-  `openssl-windows-<version>-<n>` release (`NitroNodeOpenSSLSha256`; empty
-  until the first release, so it must be built locally with `-Install`).
+  `openssl-windows-<version>-<n>` release (now `openssl-windows-3.6.2-2`; Apple's is `openssl-apple-3.6.2-2`;
+  `NitroNodeOpenSSLSha256` in the vcxproj; a new build is a new `<n>`,
+  published with `gh release create ... --latest=false`, as the Apple ones).
+  Building it needs Strawberry Perl and NASM; `-Install` puts a local build
+  in `windows/openssl`. `RunCodegenWindows` is off: no RN codegen
+  specs. Windows-only fixes in the shared code: c-ares needs
+  `ares_library_init()` (`HybridDns.cpp`); `TCP_NODELAY`/keepalive wait for
+  the connect to finish (set during `ConnectEx`, they leave `getpeername()`
+  empty); `closeFile` checks the fd with `uv_get_osfhandle()` first (the
+  CRT's `_close()` asserts on a closed one); tlsuv verifies certificates with
+  the chain engine (`win32_ca_verify` in its `engine.c`: the local ROOT store
+  is only partly populated).
+  Testing on Windows: the dev PC is ARM64 (`--arch ARM64`; x64 packages don't
+  deploy). The example's buttons have `onAccessibilityTap`, so UI Automation
+  can Invoke "Run tests" and read the results without the mouse. Debugging a
+  silent exit: `cdb` from WinDbg (winget `Microsoft.WinDbg`) attached to the
+  packaged app after launch; with a debugger attached, libuv turns the CRT
+  asserts it suppresses into breakpoints, so don't run the suites under it.
 - `metro.js`: the `withNitroNode` Metro plugin (see below).
 - `apps/`: yarn workspaces. `apps/windows` is react-native-windows' `cpp-app`
   template (app `NitroNodeExample`) whose `index.js` registers
@@ -91,6 +112,12 @@ when adding or changing an API.
   `memoryTest`), runner in `testUtils.ts`.
 
 ## Rules (decided with the user, don't undo)
+
+- **Everything from Node.js is Node 22's**: JS from `lib/`, C++ from `src/`
+  and the deps Node bundles (minimatch, ada, brotli, zstd, ...) come from the
+  latest v22.x release tag on github.com/nodejs/node (v22.23.5 as of
+  2026-11). Not from the `node` installed on the dev machine (its
+  `process.binding('natives')` is another major) nor from `main`.
 
 - **Deferred work uses our libuv timers** (`setImmediate` / `setTimeout` from
   `src/timers`), never `queueMicrotask`, React Native's timers or RN's global
@@ -145,6 +172,22 @@ when adding or changing an API.
   became static private fields (no Babel transform for them in React
   Native's preset). `createObjectURL()` is React Native's. `querystring` is
   Node's `lib/querystring.js` the same way.
+- **`path`** is Node 22's `lib/path.js` (`src/path/path.ts`, verbatim but
+  typed): `win32` and `posix`, and the module is the platform's, as Node's
+  (`win32` on Windows, `isWindows` from `node-internals`, `Platform.OS`).
+  `matchesGlob` is its `glob()` on the minimatch Node 22 bundles
+  (`src/path/minimatch.ts`, minimatch 10.2.4, generated verbatim from Node's
+  `deps/minimatch/index.js`, loaded lazily). No npm `minimatch`:
+  the user doesn't want dependencies that need `node:*` modules, which would
+  force apps to set up module redirection. Helpers from Node's internals
+  (`validateString`, `validateObject`, `getLazy`, `isWindows`) come from
+  `src/node-internals.ts`, primordials from `src/util/primordials.ts`.
+- **`process.cwd()` / `chdir()`** are real (`NitroNodeUv.uv_cwd`/`uv_chdir`),
+  so fs's relative paths, `path.resolve()` and `cwd()` agree, as in Node. On
+  iOS, Android and macOS `src/native/index.ts` moves the process from `/` to
+  `os.homedir()` (the app's data directory) when the library loads (decided
+  with the user: a real chdir, not only a reported value); only from `/`, so
+  a directory set otherwise is kept. Windows keeps its real one.
 - **`dgram`** is Node 22's `lib/dgram.js` (`src/dgram/dgram.ts`) and
   `lib/internal/dgram.js` (`src/dgram/internal.ts`), verbatim and
   `// @ts-nocheck` like url's, on `src/dgram/binding.ts` (Node's

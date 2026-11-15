@@ -66,6 +66,7 @@ import {
   markTransferMode,
   percentDecode,
   platform,
+  SideEffectFreeRegExpPrototypeSymbolReplace,
 } from './internals';
 
 // The plain globals (Object, Array, ...) are used as they are: Babel's

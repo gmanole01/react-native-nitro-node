@@ -176,6 +176,9 @@ sed -nE 's/^[[:space:]]*#[[:space:]]*define[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).
 xcrun xcodebuild -create-xcframework "${create_args[@]}" \
   -output "$DIST/$LIB_NAME.xcframework"
 
+# Apache 2.0 (section 4a): the license goes with every copy of the binaries
+cp "$SRC/LICENSE.txt" "$DIST/"
+
 ZIP="$WORK/$LIB_NAME-$OPENSSL_VERSION.zip"
 (cd "$DIST" && rm -f "$ZIP" && zip -qry "$ZIP" .)
 

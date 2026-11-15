@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { NitroModules } from 'react-native-nitro-modules';
 import type {
   NitroNodeDgram,
@@ -40,6 +41,21 @@ export const NitroOs =
   NitroModules.createHybridObject<NitroNodeOs>('NitroNodeOs');
 export const NitroTimers =
   NitroModules.createHybridObject<NitroNodeTimers>('NitroNodeTimers');
+
+// iOS, Android and macOS start an app in '/', where it can't write: as a Node
+// process starts in a directory of its own, it moves to the app's data
+// directory (os.homedir()), for process.cwd(), fs's relative paths and
+// path.resolve(). Only from '/': a directory set otherwise (a macOS app run
+// from a terminal, the app's own native code) is kept. Windows keeps its own.
+if (Platform.OS !== 'windows') {
+  try {
+    if (NitroUv.uv_cwd() === '/') {
+      NitroUv.uv_chdir(NitroOs.homedir());
+    }
+  } catch {
+    // stays where it is: process.cwd() reports it
+  }
+}
 
 let NitroDgram: NitroNodeDgram | null = null;
 /** A new UDP socket, for dgram. */

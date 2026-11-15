@@ -21,10 +21,31 @@ export function getConstructorOf(obj: any): Function | null {
 
 export const kEnumerableProperty: PropertyDescriptor = Object.freeze(Object.assign(Object.create(null), { enumerable: true }));
 export const kEmptyObject = Object.freeze(Object.create(null));
-export const isWindows = false;
+// internal/util's, as path's: React Native's Platform.OS
+export { isWindows } from '../node-internals';
+
+// RegExp.prototype[Symbol.replace] as it is before the app can change it
+const regExpSymbolReplace = RegExp.prototype[Symbol.replace];
+const crossRealmRegexes = new WeakMap<RegExp, RegExp>();
+
+/**
+ * internal/util: a replace that the app's changes to RegExp.prototype, or the
+ * regex's lastIndex, can't affect. Node runs it on a copy of the regex from
+ * another realm (vm); React Native has none, so it's a copy run with the
+ * built-in method taken at startup.
+ */
+export function SideEffectFreeRegExpPrototypeSymbolReplace(regex: RegExp, string: string, replacement: string): string {
+  let copy = crossRealmRegexes.get(regex);
+  if (copy === undefined) {
+    copy = new RegExp(regex.source, regex.flags);
+    crossRealmRegexes.set(regex, copy);
+  }
+  return Reflect.apply(regExpSymbolReplace, copy, [string, replacement]);
+}
 
 /** process.platform, as Node names it, for ERR_INVALID_FILE_URL_HOST. */
-export const platform: string = Platform.OS;
+export const platform: string =
+  Platform.OS === 'windows' ? 'win32' : Platform.OS === 'macos' ? 'darwin' : Platform.OS;
 
 /** internal/worker/js_transferable: no workers here. */
 export function markTransferMode(_obj: unknown, _cloneable: boolean, _transferable: boolean): void {}

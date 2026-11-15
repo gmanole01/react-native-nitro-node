@@ -243,14 +243,21 @@ export async function runTimersTests(step: Step) {
     let b = 0;
     const first = setInterval(() => a++, 10);
     const second = setInterval(() => b++, 10);
-    await delay(60);
+    // Two ticks each, however long they take: not a count in a fixed window.
+    // The ticks come every ~16 ms where the system clock is that coarse
+    // (Windows, as in Node there), and only once the JS thread is free: right
+    // after a step it's still rendering the results, for tens of ms in Debug.
+    const deadline = Date.now() + 2000;
+    while ((a < 2 || b < 2) && Date.now() < deadline) {
+      await delay(5);
+    }
     clearInterval(first);
     clearInterval(+second);
     const [stoppedA, stoppedB] = [a, b];
-    await delay(60);
     if (stoppedA < 2 || stoppedB < 2) {
-      throw new Error(`only ${stoppedA} and ${stoppedB} ticks in 60 ms`);
+      throw new Error(`only ${stoppedA} and ${stoppedB} ticks in 2 s`);
     }
+    await delay(60);
     expectEqual('no ticks after clearInterval', `${a},${b}`, `${stoppedA},${stoppedB}`);
   });
 
@@ -456,11 +463,10 @@ export async function runTimersTests(step: Step) {
     if (!Array.isArray(process.argv) || typeof process.env !== 'object') {
       throw new Error('argv or env has the wrong type');
     }
-    expectEqual('cwd()', process.cwd(), '/');
     expectEqual('umask()', process.umask(), 0);
     expectEqual('title', process.title, 'browser');
     expectEqual('listeners()', process.listeners('x').length, 0);
-    expectThrow('chdir()', 'Error', () => process.chdir('/tmp'));
+    // cwd() and chdir() are real ones: see pathTests.ts
   });
 
   await step("Metro: the app's own imports are left alone by default", async () => {

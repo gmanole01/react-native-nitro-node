@@ -8,6 +8,7 @@ import url, {
   urlToHttpOptions,
 } from 'react-native-nitro-node/url';
 import querystring from 'react-native-nitro-node/querystring';
+import { Platform } from 'react-native';
 import { type Step } from './testUtils';
 
 function expectEqual<T>(label: string, actual: T, expected: T) {
@@ -135,8 +136,19 @@ export async function runUrlTests(step: Step) {
   });
 
   await step('url: files, domains, http options and querystring.parse()', async () => {
-    expectEqual('fileURLToPath', fileURLToPath('file:///tmp/a%20b/%C3%A9'), '/tmp/a b/é');
-    expectEqual('pathToFileURL', pathToFileURL('/tmp/a b#c?d%').href, 'file:///tmp/a%20b%23c%3Fd%25');
+    if (Platform.OS === 'windows') {
+      // as Node on Windows: drive letters, and a host is a UNC path
+      expectEqual('fileURLToPath', fileURLToPath('file:///C:/tmp/a%20b/%C3%A9'), 'C:\\tmp\\a b\\é');
+      expectEqual('pathToFileURL', pathToFileURL('C:\\tmp\\a b#c?d%').href, 'file:///C:/tmp/a%20b%23c%3Fd%25');
+      expectEqual('UNC', [fileURLToPath('file://server/share/x'), pathToFileURL('\\\\server\\share\\x').href], [
+        '\\\\server\\share\\x',
+        'file://server/share/x',
+      ]);
+      expectEqual('no drive letter', thrown(() => fileURLToPath('file:///tmp/x')).code, 'ERR_INVALID_FILE_URL_PATH');
+    } else {
+      expectEqual('fileURLToPath', fileURLToPath('file:///tmp/a%20b/%C3%A9'), '/tmp/a b/é');
+      expectEqual('pathToFileURL', pathToFileURL('/tmp/a b#c?d%').href, 'file:///tmp/a%20b%23c%3Fd%25');
+    }
     expectEqual('domains', [domainToASCII('español.com'), domainToUnicode('xn--espaol-zwa.com'), domainToASCII('xn--iñvalid.com')], [
       'xn--espaol-zwa.com',
       'español.com',

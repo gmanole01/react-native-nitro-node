@@ -301,6 +301,10 @@ export interface NitroNodeUv extends HybridObject<{ android: 'c++'; ios: 'c++' }
    * throws "[errno N]" on another failure.
    */
   uv_interface_addresses(): InterfaceAddress[];
+  /** The process's current directory, for process.cwd(); throws "[errno N]". */
+  uv_cwd(): string;
+  /** Changes it, for process.chdir(): 0, or the libuv status. */
+  uv_chdir(directory: string): number;
 }
 
 /**
